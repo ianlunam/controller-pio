@@ -13,6 +13,7 @@
 
 #include <ArduinoJson.h>
 #include <math.h>
+#include <time.h>
 
 TFT_eSPI tft = TFT_eSPI();
 Adafruit_AHTX0 aht;
@@ -27,6 +28,20 @@ ButtonWidget btnR = ButtonWidget(&tft);
 
 ButtonWidget *btn[] = { &btnR };
 uint8_t buttonCount = sizeof(btn) / sizeof(btn[0]);
+
+// Time bits
+struct tm timeinfo;
+const char* tz = "NZST-12NZDT,M9.5.0,M4.1.0/3";
+uint32_t targetTime = 0;
+byte omm = 99;
+bool initial = 1;
+int16_t xcolon = 0;
+uint8_t hh, mm, ss;    // Get H, M, S from compile time
+// Digital time location
+int16_t digitalXPos = 200;
+int16_t digitalYPos = 100;
+
+String ssid, pwd;
 
 // MQTT Broker
 const char *mqtt_broker = "mqtt.local";
@@ -73,7 +88,7 @@ void plotLinear(char *label, int x, int y)
 }
 
 
-void plotPointer(int new_value, int &old_value, int pos)
+void plotPointer(int new_value, int &old_value, int pos, int range)
 {
     int dy = 187;
     byte pw = 16;
@@ -84,9 +99,13 @@ void plotPointer(int new_value, int &old_value, int pos)
     tft.drawRightString(buf, pos * 40 + 36 - 5, 187 - 27 + 155 - 18, 2);
 
     int dx = 3 + 40 * pos;
+    new_value = new_value * 100 / range;
 
     while (!(new_value == old_value)) {
         dy = 187 + 100 - old_value;
+        Serial.print("DY: ");
+        Serial.println(dy);
+        
         if (old_value > new_value)
         {
             tft.drawLine(dx, dy - 5, dx + pw, dy, TFT_WHITE);
@@ -102,53 +121,6 @@ void plotPointer(int new_value, int &old_value, int pos)
             delay(10);
         }
     }
-}
-
-void sendMQTTTemperatureDiscoveryMsg() {
-    String discoveryTopic = "homeassistant/sensor/screen_sensor_" + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]) + "T//config";
-
-    DynamicJsonDocument doc(1024);
-    char buffer[512];
-
-    doc["name"] = "Screen " + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) +  String(wifi_mac[2]) + " Temperature";
-    doc["state_topic"] = screenStateTopic;
-    doc["unit_of_measurement"] = "°C";
-    doc["device_class"] = "temperature";
-    doc["force_update"] = true;
-    doc["value_template"] = "{{ value_json.temperature|default(0) }}";
-    doc["unique_id"] = "temp" + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]);
-
-    size_t n = serializeJson(doc, buffer);
-    bool b = client.publish(discoveryTopic.c_str(), buffer, n);
-    Serial.print("Sensor response: ");
-    Serial.println(b);
-    Serial.println(screenStateTopic);
-    Serial.println(discoveryTopic);
-    Serial.println(buffer);
-}
-
-void sendMQTTHumidityDiscoveryMsg() {
-    String discoveryTopic = "homeassistant/sensor/screen_sensor_" + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]) + "H/config";
-
-    DynamicJsonDocument doc(1024);
-    char buffer[512];
-
-    doc["name"] = "Screen " + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]) + " Humidity";
-    doc["state_topic"] = screenStateTopic;
-    doc["unit_of_measurement"] = "%";
-    doc["device_class"] = "humidity";
-    doc["force_update"] = true;
-    doc["value_template"] = "{{ value_json.humidity|default(0) }}";
-    doc["unique_id"] = "hum" + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]);
-
-    size_t n = serializeJson(doc, buffer);
-
-    bool b = client.publish(discoveryTopic.c_str(), buffer, n);
-    Serial.print("Sensor response: ");
-    Serial.println(b);
-    Serial.println(screenStateTopic);
-    Serial.println(discoveryTopic);
-    Serial.println(buffer);
 }
 
 void sendMQTTSensors() {
@@ -199,7 +171,6 @@ void touch_calibrate() {
         // data not valid so recalibrate
         tft.fillScreen(TFT_BLACK);
         tft.setCursor(20, 0);
-        tft.setTextFont(2);
         tft.setTextSize(1);
         tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
@@ -228,6 +199,7 @@ void touch_calibrate() {
 }
 
 void callback(char *topic, byte *payload, unsigned int length) {
+    tft.setFreeFont(FF18);
     if (memcmp(payload, on_state, sizeof(on_state)) == 0) {
         Serial.println("New state is on");
         btnR.drawSmoothButton(true, 3, TFT_BLACK, "ON");
@@ -267,29 +239,70 @@ void initButtons() {
 
 }
 
+void printClock() {
+    getLocalTime(&timeinfo);
+    ss = timeinfo.tm_sec;
+    mm = timeinfo.tm_min;
+    hh = timeinfo.tm_hour;
+    
+    if (targetTime < millis()) {
+        tft.setFreeFont(FF17);
+        tft.setTextSize(2);
+        targetTime = millis()+500;
+
+        // Update digital time
+        int16_t xpos = digitalXPos;
+        int16_t ypos = digitalYPos;
+
+        // if (ss==0 || initial) {
+        //     initial = 0;
+        //     tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        //     tft.setCursor (50, ypos + 60);
+
+        //     char ptr[20];
+        //     int rc = strftime(ptr, 20, "%a %e %b", &timeinfo);
+        //     tft.print(ptr);
+        // }
+
+
+        if (omm != mm) { // Only redraw every minute to minimise flicker
+            // Uncomment ONE of the next 2 lines, using the ghost image demonstrates text overlay as time is drawn over it
+            tft.setTextColor(0x39C4, TFT_BLACK);    // Leave a 7 segment ghost image, comment out next line!
+            //tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // Font 7 is to show a pseudo 7 segment display.
+            // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
+            tft.drawString("88:88",xpos,ypos,7); // Overwrite the text to clear it
+            tft.setTextColor(TFT_GREEN); // Orange
+            omm = mm;
+
+            if (hh<10) xpos += tft.drawChar('0',xpos,ypos,7);
+            xpos += tft.drawNumber(hh,xpos,ypos,7);
+            xcolon = xpos;
+            xpos += tft.drawChar(':',xpos,ypos,7);
+            if (mm<10) xpos += tft.drawChar('0',xpos,ypos,7);
+            tft.drawNumber(mm,xpos,ypos,7);
+        }
+
+        if (ss%2) { // Flash the colon
+            tft.setTextColor(0x39C4, TFT_BLACK);
+            xpos+= tft.drawChar(':',xcolon,ypos,7);
+        } else {
+            tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            tft.drawChar(':',xcolon,ypos,7);
+        }
+        tft.setTextSize(1);
+    } 
+}
+
 void setup() {
     Serial.begin(115200);
     Serial.println("Staring");
-    tft.begin();
-    tft.setRotation(1);
-    tft.fillScreen(TFT_BLACK);
-    tft.setFreeFont(FF18);
-
-
-    // Calibrate the touch screen and retrieve the scaling factors
-    touch_calibrate();
-    initButtons();
-
-    char q[] = "C";
-    plotLinear(q, 0, 160);
-    char r[] = "%H";
-    plotLinear(r, 40, 160);
 
     // Get WiFi creds from preferences storage
     Preferences wifiCreds;
     wifiCreds.begin("wifiCreds", true);
-    String ssid = wifiCreds.getString("ssid");
-    String pwd = wifiCreds.getString("password");
+    ssid = wifiCreds.getString("ssid");
+    pwd = wifiCreds.getString("password");
     wifiCreds.end();
 
     WiFi.begin(ssid.c_str(), pwd.c_str());
@@ -305,6 +318,24 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
+    configTzTime(tz, "nz.pool.ntp.org");
+    getLocalTime(&timeinfo);
+    targetTime = millis() + 500;
+
+    tft.begin();
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+    tft.setFreeFont(FF18);
+
+    // Calibrate the touch screen and retrieve the scaling factors
+    touch_calibrate();
+    initButtons();
+
+    char q[] = "C";
+    plotLinear(q, 0, 160);
+    char r[] = "%H";
+    plotLinear(r, 40, 160);
+
     client.setServer(mqtt_broker, mqtt_port);
     client.setCallback(callback);
     while (!client.connected()) {
@@ -319,12 +350,7 @@ void setup() {
             delay(2000);
         }
     }
-    // Publish and subscribe
-    // client.publish(topic, "Hi, I'm ESP32 ^^");
     client.subscribe(state_topic);
-
-    sendMQTTHumidityDiscoveryMsg();
-    sendMQTTTemperatureDiscoveryMsg();
 
     if (! aht.begin()) {
         Serial.println("Could not find AHT? Check wiring");
@@ -385,12 +411,19 @@ void loop() {
     }
 
     client.loop();
+    printClock();
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Reconnecting WiFi");
+        WiFi.begin(ssid.c_str(), pwd.c_str());
+        delay(500);
+    }
 
     if (updateTime <= millis()) {
         updateTime = millis() + 1000;
         aht.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
-        plotPointer(int(temp.temperature), old_temp, 0);
-        plotPointer(int(humidity.relative_humidity), old_humid, 1);
+        plotPointer(int(temp.temperature), old_temp, 0, 40);
+        plotPointer(int(humidity.relative_humidity), old_humid, 1, 100);
     }
 
     if (sensorTime <= millis()) {

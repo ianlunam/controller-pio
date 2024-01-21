@@ -93,6 +93,22 @@ mqtt_statestream:
         - switch.sonoff_1001ffea20_1
 ```
 
+* Sensor Setup
+```yaml
+mqtt:
+  - sensor:
+    - name: "Temperature"
+      state_topic: "home/screen/481635231/state"
+      suggested_display_precision: 1
+      unit_of_measurement: "C"
+      value_template: "{{ value_json.temperature }}"
+    - name: "Humidity"
+      state_topic: "home/screen/481635231/state"
+      suggested_display_precision: 1
+      unit_of_measurement: "%"
+      value_template: "{{ value_json.humidity }}"
+
+```
 ![Working Setup](images/working.jpg)
 
 
