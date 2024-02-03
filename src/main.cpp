@@ -11,6 +11,8 @@
 #include <ArduinoOTA.h>
 #include <Adafruit_AHTX0.h>
 
+#include <BH1750.h>
+
 #include <ArduinoJson.h>
 #include <math.h>
 #include <time.h>
@@ -21,12 +23,13 @@ Adafruit_AHTX0 aht;
 #define CALIBRATION_FILE "/TouchCalData1"
 #define REPEAT_CAL false
 
-ButtonWidget btnR = ButtonWidget(&tft);
-
+ButtonWidget fairyButton = ButtonWidget(&tft);
 #define BUTTON_W 100
 #define BUTTON_H 50
+#define BUTTON_X 50
+uint16_t BUTTON_Y = (BUTTON_H / 2) + 30;
 
-ButtonWidget *btn[] = { &btnR };
+ButtonWidget *btn[] = { &fairyButton };
 uint8_t buttonCount = sizeof(btn) / sizeof(btn[0]);
 
 // Time bits
@@ -37,10 +40,12 @@ byte omm = 99;
 bool initial = 1;
 int16_t xcolon = 0;
 uint8_t hh, mm, ss;    // Get H, M, S from compile time
-// Digital time location
-int16_t digitalXPos = 200;
-int16_t digitalYPos = 100;
 
+// Digital time location
+#define DIGITAL_X 200
+#define DIGITAL_Y 150
+
+// Wifi, stored for reconnects
 String ssid, pwd;
 
 // MQTT Broker
@@ -57,10 +62,44 @@ sensors_event_t humidity, temp;
 int old_temp = 0;
 int old_humid = 0;
 
-byte wifi_mac[6];
-
+// Wifi
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+// Bin dats
+uint8_t day = 0;
+uint8_t gardenBin = -1;
+uint8_t recycleBin = -1;
+uint8_t landfillBin = -1;
+
+void drawCircle(int16_t x, int16_t y, int16_t r, int16_t colour, bool fill) {
+    if (fill) {
+        tft.fillCircle(x, y, r-1, colour);
+        tft.drawCircle(x, y, r, TFT_WHITE);
+    } else {
+        tft.drawCircle(x, y, r, colour);
+    }
+}
+
+
+int daysDiff() {
+    struct tm tm1;
+    getLocalTime(&tm1);
+    struct tm tm2 = { 0 };
+
+    /* date 2: 2024-1-3 - A landfill and garden bin day */
+    tm2.tm_year = 2024 - 1900;
+    tm2.tm_mon = 1 - 1;
+    tm2.tm_mday = 3;
+    tm2.tm_hour = tm2.tm_min = tm2.tm_sec = 0;
+    tm2.tm_isdst = -1;
+
+    time_t t1 = mktime(&tm1);
+    time_t t2 = mktime(&tm2);
+
+    double dt = difftime(t1, t2);
+    return round(dt / 86400);   
+}
 
 
 void plotLinear(char *label, int x, int y)
@@ -202,40 +241,30 @@ void callback(char *topic, byte *payload, unsigned int length) {
     tft.setFreeFont(FF18);
     if (memcmp(payload, on_state, sizeof(on_state)) == 0) {
         Serial.println("New state is on");
-        btnR.drawSmoothButton(true, 3, TFT_BLACK, "ON");
+        fairyButton.drawSmoothButton(true, 3, TFT_BLACK, "ON");
     } else {
         Serial.println("New state is off");
-        btnR.drawSmoothButton(false, 3, TFT_BLACK, "OFF");
+        fairyButton.drawSmoothButton(false, 3, TFT_BLACK, "OFF");
     }
 }
 
-void btnR_pressAction(void) {
-    if (btnR.justPressed()) {
+void fairyButton_pressAction(void) {
+    if (fairyButton.justPressed()) {
         Serial.println("Button toggled");
         client.publish(toggle_topic, "Light toggle.");
-        btnR.setPressTime(millis());
+        fairyButton.setPressTime(millis());
     }
-}
-
-void btnR_releaseAction(void) {
-    // Not action
 }
 
 void initButtons() {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(5, 30);
+    tft.setCursor(40, 40);
     tft.print("Fairy Lights");
-    
-    // uint16_t x = (tft.width() - BUTTON_W) / 2;
-    // uint16_t y = tft.height() / 2 - BUTTON_H - 10;
-    uint16_t x = 15;
-    uint16_t y = (BUTTON_H / 2) + 20;
 
     char q[] = "OFF";
-    btnR.initButtonUL(x, y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_BLACK, TFT_GREEN, q, 1);
-    btnR.setPressAction(btnR_pressAction);
-    //btnR.setReleaseAction(btnR_releaseAction);
-    btnR.drawSmoothButton(false, 3, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
+    fairyButton.initButtonUL(BUTTON_X, BUTTON_Y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_BLACK, TFT_GREEN, q, 1);
+    fairyButton.setPressAction(fairyButton_pressAction);
+    fairyButton.drawSmoothButton(false, 3, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
 
 }
 
@@ -251,8 +280,8 @@ void printClock() {
         targetTime = millis()+500;
 
         // Update digital time
-        int16_t xpos = digitalXPos;
-        int16_t ypos = digitalYPos;
+        int16_t xpos = DIGITAL_X;
+        int16_t ypos = DIGITAL_Y;
 
         // if (ss==0 || initial) {
         //     initial = 0;
@@ -267,8 +296,8 @@ void printClock() {
 
         if (omm != mm) { // Only redraw every minute to minimise flicker
             // Uncomment ONE of the next 2 lines, using the ghost image demonstrates text overlay as time is drawn over it
-            tft.setTextColor(0x39C4, TFT_BLACK);    // Leave a 7 segment ghost image, comment out next line!
-            //tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // tft.setTextColor(0x39C4, TFT_BLACK);    // Leave a 7 segment ghost image, comment out next line!
+            tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
             // Font 7 is to show a pseudo 7 segment display.
             // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
             tft.drawString("88:88",xpos,ypos,7); // Overwrite the text to clear it
@@ -290,8 +319,37 @@ void printClock() {
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
             tft.drawChar(':',xcolon,ypos,7);
         }
+
+        if (day != timeinfo.tm_mday) {
+            day = timeinfo.tm_mday;
+            int timelapse = daysDiff();
+            Serial.print("Timelapse: ");
+            Serial.println(timelapse);
+
+            // Landfill is fortnightly from start date
+            landfillBin = 14 - (timelapse%14);
+            // Recycle is fortnightly from week after start date
+            recycleBin = 14 - ((timelapse + 7)%14);
+            // Garden bin is 4 weekly from start date
+            gardenBin = 28 - (timelapse%28);
+
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
+            tft.setTextSize(2);
+            tft.drawString("Bins:", 228, 19);
+
+            drawCircle(330, 35, 20, TFT_RED, (landfillBin<7));
+            drawCircle(380, 35, 20, TFT_YELLOW, (recycleBin<7));
+
+            if (gardenBin<7) {
+                drawCircle(430, 35, 20, TFT_GREEN, true);
+            } else {
+                tft.setTextColor(TFT_GREEN, TFT_BLACK);
+                tft.drawNumber((gardenBin - (gardenBin % 7)) / 7, 420, 20);
+                drawCircle(430, 35, 20, TFT_GREEN, false);
+            }
+        }
         tft.setTextSize(1);
-    } 
+    }
 }
 
 void setup() {
@@ -311,6 +369,7 @@ void setup() {
         Serial.print(".");
     }
 
+    byte wifi_mac[6];
     WiFi.macAddress(wifi_mac);
     screenStateTopic = "home/screen/" + String(wifi_mac[5]) + String(wifi_mac[4]) + String(wifi_mac[3]) + String(wifi_mac[2]) + "/state";
 
@@ -332,9 +391,9 @@ void setup() {
     initButtons();
 
     char q[] = "C";
-    plotLinear(q, 0, 160);
+    plotLinear(q, 40, 160);
     char r[] = "%H";
-    plotLinear(r, 40, 160);
+    plotLinear(r, 120, 160);
 
     client.setServer(mqtt_broker, mqtt_port);
     client.setCallback(callback);
@@ -422,8 +481,8 @@ void loop() {
     if (updateTime <= millis()) {
         updateTime = millis() + 1000;
         aht.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
-        plotPointer(int(temp.temperature), old_temp, 0, 40);
-        plotPointer(int(humidity.relative_humidity), old_humid, 1, 100);
+        plotPointer(int(temp.temperature), old_temp, 1, 40);
+        plotPointer(int(humidity.relative_humidity), old_humid, 3, 100);
     }
 
     if (sensorTime <= millis()) {
