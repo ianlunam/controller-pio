@@ -42,7 +42,13 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 
 // Digital time location
 #define DIGITAL_X 200
-#define DIGITAL_Y 150
+#define DIGITAL_Y 50
+#define DATE_X 320
+#define DATE_Y 180
+
+// Bins
+#define BINS_X 350
+#define BINS_Y 280
 
 // MQTT Broker
 const char *mqtt_broker = "mqtt.local";
@@ -279,17 +285,6 @@ void printClock() {
         int16_t xpos = DIGITAL_X;
         int16_t ypos = DIGITAL_Y;
 
-        // if (ss==0 || initial) {
-        //     initial = 0;
-        //     tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        //     tft.setCursor (50, ypos + 60);
-
-        //     char ptr[20];
-        //     int rc = strftime(ptr, 20, "%a %e %b", &timeinfo);
-        //     tft.print(ptr);
-        // }
-
-
         if (omm != mm) { // Only redraw every minute to minimise flicker
             // Uncomment ONE of the next 2 lines, using the ghost image demonstrates text overlay as time is drawn over it
             // tft.setTextColor(0x39C4, TFT_BLACK);    // Leave a 7 segment ghost image, comment out next line!
@@ -318,6 +313,14 @@ void printClock() {
 
         if (day != timeinfo.tm_mday) {
             day = timeinfo.tm_mday;
+
+            // Day
+            tft.setTextColor(TFT_SKYBLUE, TFT_BLACK);
+            tft.setCursor (DATE_X, DATE_Y);
+            char ptr[4];
+            int rc = strftime(ptr, 4, "%a", &timeinfo);
+            tft.print(ptr);
+
             int timelapse = daysDiff();
             Serial.print("Timelapse: ");
             Serial.println(timelapse);
@@ -331,17 +334,17 @@ void printClock() {
 
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setTextSize(2);
-            tft.drawString("Bins:", 228, 19);
+            tft.drawString("Bins:", BINS_X - 102, BINS_Y -16);
 
-            drawCircle(330, 35, 20, TFT_RED, (landfillBin<7));
-            drawCircle(380, 35, 20, TFT_YELLOW, (recycleBin<7));
+            drawCircle(BINS_X, BINS_Y, 20, TFT_RED, (landfillBin<7));
+            drawCircle(BINS_X + 50, BINS_Y, 20, TFT_YELLOW, (recycleBin<7));
 
             if (gardenBin<7) {
-                drawCircle(430, 35, 20, TFT_GREEN, true);
+                drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, true);
             } else {
                 tft.setTextColor(TFT_GREEN, TFT_BLACK);
-                tft.drawNumber((gardenBin - (gardenBin % 7)) / 7, 420, 20);
-                drawCircle(430, 35, 20, TFT_GREEN, false);
+                tft.drawNumber((gardenBin - (gardenBin % 7)) / 7, BINS_X + 90, BINS_Y - 15);
+                drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, false);
             }
         }
         tft.setTextSize(1);
