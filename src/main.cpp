@@ -1,4 +1,3 @@
-#include <Preferences.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 
@@ -44,9 +43,6 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 // Digital time location
 #define DIGITAL_X 200
 #define DIGITAL_Y 150
-
-// Wifi, stored for reconnects
-String ssid, pwd;
 
 // MQTT Broker
 const char *mqtt_broker = "mqtt.local";
@@ -356,14 +352,7 @@ void setup() {
     Serial.begin(115200);
     Serial.println("Staring");
 
-    // Get WiFi creds from preferences storage
-    Preferences wifiCreds;
-    wifiCreds.begin("wifiCreds", true);
-    ssid = wifiCreds.getString("ssid");
-    pwd = wifiCreds.getString("password");
-    wifiCreds.end();
-
-    WiFi.begin(ssid.c_str(), pwd.c_str());
+    WiFi.begin(WIFI_SSID, WIFI_PWD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
@@ -474,7 +463,7 @@ void loop() {
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("Reconnecting WiFi");
-        WiFi.begin(ssid.c_str(), pwd.c_str());
+        WiFi.begin(WIFI_SSID, WIFI_PWD);
         delay(500);
     }
 
