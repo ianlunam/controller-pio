@@ -42,12 +42,10 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 
 // Digital time location
 #define DIGITAL_X 200
-#define DIGITAL_Y 50
-#define DATE_X 320
-#define DATE_Y 180
+#define DIGITAL_Y 30
 
 // Bins
-#define BINS_X 350
+#define BINS_X 340
 #define BINS_Y 280
 
 // MQTT Broker
@@ -69,7 +67,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // Bin dats
-uint8_t day = 0;
+uint8_t lastDay = 0;
 uint8_t gardenBin = -1;
 uint8_t recycleBin = -1;
 uint8_t landfillBin = -1;
@@ -260,7 +258,7 @@ void fairyButton_pressAction(void) {
 
 void initButtons() {
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(40, 40);
+    tft.setCursor(BUTTON_X - 10, BUTTON_Y - 10);
     tft.print("Fairy Lights");
 
     char q[] = "OFF";
@@ -311,19 +309,18 @@ void printClock() {
             tft.drawChar(':',xcolon,ypos,7);
         }
 
-        if (day != timeinfo.tm_mday) {
-            day = timeinfo.tm_mday;
+        if (lastDay != timeinfo.tm_mday) {
+            lastDay = timeinfo.tm_mday;
 
             // Day
-            tft.setTextColor(TFT_SKYBLUE, TFT_BLACK);
-            tft.setCursor (DATE_X, DATE_Y);
+            tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            tft.setTextSize(5);
+            tft.setCursor (DIGITAL_X + 60, DIGITAL_Y + 170);
             char ptr[4];
             int rc = strftime(ptr, 4, "%a", &timeinfo);
             tft.print(ptr);
 
             int timelapse = daysDiff();
-            Serial.print("Timelapse: ");
-            Serial.println(timelapse);
 
             // Landfill is fortnightly from start date
             landfillBin = 14 - (timelapse%14);
