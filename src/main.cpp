@@ -33,7 +33,6 @@ uint8_t buttonCount = sizeof(btn) / sizeof(btn[0]);
 
 // Time bits
 struct tm timeinfo;
-const char* tz = "NZST-12NZDT,M9.5.0,M4.1.0/3";
 uint32_t targetTime = 0;
 byte omm = 99;
 bool initial = 1;
@@ -313,11 +312,14 @@ void printClock() {
             lastDay = timeinfo.tm_mday;
 
             // Day
+
+            tft.setFreeFont(FF24);
+            tft.setTextSize(2);
+            tft.fillRect(DIGITAL_X, DIGITAL_Y + 100, 280, 100, TFT_BLACK);
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
-            tft.setTextSize(5);
-            tft.setCursor (DIGITAL_X + 60, DIGITAL_Y + 170);
-            char ptr[4];
-            int rc = strftime(ptr, 4, "%a", &timeinfo);
+            tft.setCursor (DIGITAL_X + 80, DIGITAL_Y + 180);
+            char ptr[10];
+            int rc = strftime(ptr, 10, "%a", &timeinfo);
             tft.print(ptr);
 
             int timelapse = daysDiff();
@@ -330,7 +332,8 @@ void printClock() {
             gardenBin = 28 - (timelapse%28);
 
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
-            tft.setTextSize(2);
+            tft.setFreeFont(FF19);
+            tft.setTextSize(1);
             tft.drawString("Bins:", BINS_X - 102, BINS_Y -16);
 
             drawCircle(BINS_X, BINS_Y, 20, TFT_RED, (landfillBin<7));
@@ -366,7 +369,7 @@ void setup() {
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
 
-    configTzTime(tz, "nz.pool.ntp.org");
+    configTzTime(TIMEZONE, "nz.pool.ntp.org");
     getLocalTime(&timeinfo);
     targetTime = millis() + 500;
 
