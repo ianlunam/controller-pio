@@ -331,9 +331,10 @@ void printClock() {
             // Garden bin is 4 weekly from start date
             gardenBin = 28 - (timelapse%28);
 
-            tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setFreeFont(FF19);
+            tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setTextSize(1);
+            tft.fillRect(BINS_X - 110, BINS_Y -20, 260, 100, TFT_BLACK);
             tft.drawString("Bins:", BINS_X - 102, BINS_Y -16);
 
             drawCircle(BINS_X, BINS_Y, 20, TFT_RED, (landfillBin<7));
