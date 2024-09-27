@@ -44,7 +44,7 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 #define DIGITAL_Y 30
 
 // Bins
-#define BINS_X 340
+#define BINS_X 350
 #define BINS_Y 280
 
 // MQTT Broker
@@ -67,7 +67,7 @@ PubSubClient client(espClient);
 
 // Bin dats
 uint8_t lastDay = 0;
-uint8_t gardenBin = -1;
+// uint8_t gardenBin = -1;
 uint8_t recycleBin = -1;
 uint8_t landfillBin = -1;
 
@@ -86,10 +86,10 @@ int daysDiff() {
     getLocalTime(&tm1);
     struct tm tm2 = { 0 };
 
-    /* date 2: 2024-1-3 - A landfill and garden bin day */
+    /* date 2: 2024-9-25 - A landfill bin day */
     tm2.tm_year = 2024 - 1900;
-    tm2.tm_mon = 1 - 1;
-    tm2.tm_mday = 3;
+    tm2.tm_mon = 9 - 1;
+    tm2.tm_mday = 25;
     tm2.tm_hour = tm2.tm_min = tm2.tm_sec = 0;
     tm2.tm_isdst = -1;
 
@@ -329,7 +329,7 @@ void printClock() {
             // Recycle is fortnightly from week after start date
             recycleBin = 14 - ((timelapse + 7)%14);
             // Garden bin is 4 weekly from start date
-            gardenBin = 28 - (timelapse%28);
+            // gardenBin = 28 - (timelapse%28);
 
             tft.setFreeFont(FF19);
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -340,13 +340,13 @@ void printClock() {
             drawCircle(BINS_X, BINS_Y, 20, TFT_RED, (landfillBin<7));
             drawCircle(BINS_X + 50, BINS_Y, 20, TFT_YELLOW, (recycleBin<7));
 
-            if (gardenBin<7) {
-                drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, true);
-            } else {
-                tft.setTextColor(TFT_GREEN, TFT_BLACK);
-                tft.drawNumber((gardenBin - (gardenBin % 7)) / 7, BINS_X + 90, BINS_Y - 15);
-                drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, false);
-            }
+            // if (gardenBin<7) {
+            //     drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, true);
+            // } else {
+            //     tft.setTextColor(TFT_GREEN, TFT_BLACK);
+            //     tft.drawNumber((gardenBin - (gardenBin % 7)) / 7, BINS_X + 90, BINS_Y - 15);
+            //     drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, false);
+            // }
         }
         tft.setTextSize(1);
     }
