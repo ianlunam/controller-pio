@@ -89,7 +89,7 @@ int daysDiff() {
     /* date 2: 2024-9-25 - A landfill bin day */
     tm2.tm_year = 2024 - 1900;
     tm2.tm_mon = 9 - 1;
-    tm2.tm_mday = 25;
+    tm2.tm_mday = 26;
     tm2.tm_hour = tm2.tm_min = tm2.tm_sec = 0;
     tm2.tm_isdst = -1;
 
@@ -101,65 +101,65 @@ int daysDiff() {
 }
 
 
-void plotLinear(char *label, int x, int y)
-{
-    int w = 36;
-    tft.drawRect(x, y, w, 155, TFT_GREY);
-    tft.fillRect(x+2, y + 19, w-3, 155 - 38, TFT_WHITE);
-    tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    tft.drawCentreString(label, x + w / 2, y + 2, 2);
+// void plotLinear(char *label, int x, int y)
+// {
+//     int w = 36;
+//     tft.drawRect(x, y, w, 155, TFT_GREY);
+//     tft.fillRect(x+2, y + 19, w-3, 155 - 38, TFT_WHITE);
+//     tft.setTextColor(TFT_CYAN, TFT_BLACK);
+//     tft.drawCentreString(label, x + w / 2, y + 2, 2);
 
-    for (int i = 0; i < 110; i += 10)
-    {
-        tft.drawFastHLine(x + 20, y + 27 + i, 6, TFT_BLACK);
-    }
+//     for (int i = 0; i < 110; i += 10)
+//     {
+//         tft.drawFastHLine(x + 20, y + 27 + i, 6, TFT_BLACK);
+//     }
 
-    for (int i = 0; i < 110; i += 50)
-    {
-        tft.drawFastHLine(x + 20, y + 27 + i, 9, TFT_BLACK);
-    }
+//     for (int i = 0; i < 110; i += 50)
+//     {
+//         tft.drawFastHLine(x + 20, y + 27 + i, 9, TFT_BLACK);
+//     }
     
-    tft.fillTriangle(x+3, y + 127, x+3+16, y+127, x + 3, y + 127 - 5, TFT_RED);
-    tft.fillTriangle(x+3, y + 127, x+3+16, y+127, x + 3, y + 127 + 5, TFT_RED);
+//     tft.fillTriangle(x+3, y + 127, x+3+16, y+127, x + 3, y + 127 - 5, TFT_RED);
+//     tft.fillTriangle(x+3, y + 127, x+3+16, y+127, x + 3, y + 127 + 5, TFT_RED);
     
-    tft.drawCentreString("---", x + w / 2, y + 155 - 18, 2);
-}
+//     tft.drawCentreString("---", x + w / 2, y + 155 - 18, 2);
+// }
 
 
-void plotPointer(int new_value, int &old_value, int pos, int range)
-{
-    int dy = 187;
-    byte pw = 16;
+// void plotPointer(int new_value, int &old_value, int pos, int range)
+// {
+//     int dy = 187;
+//     byte pw = 16;
 
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+//     tft.setTextColor(TFT_GREEN, TFT_BLACK);
 
-    char buf[8]; dtostrf(new_value, 4, 0, buf);
-    tft.drawRightString(buf, pos * 40 + 36 - 5, 187 - 27 + 155 - 18, 2);
+//     char buf[8]; dtostrf(new_value, 4, 0, buf);
+//     tft.drawRightString(buf, pos * 40 + 36 - 5, 187 - 27 + 155 - 18, 2);
 
-    int dx = 3 + 40 * pos;
-    new_value = new_value * 100 / range;
+//     int dx = 3 + 40 * pos;
+//     new_value = new_value * 100 / range;
 
-    while (!(new_value == old_value)) {
-        dy = 187 + 100 - old_value;
-        Serial.print("DY: ");
-        Serial.println(dy);
+//     while (!(new_value == old_value)) {
+//         dy = 187 + 100 - old_value;
+//         Serial.print("DY: ");
+//         Serial.println(dy);
         
-        if (old_value > new_value)
-        {
-            tft.drawLine(dx, dy - 5, dx + pw, dy, TFT_WHITE);
-            old_value--;
-            tft.drawLine(dx, dy + 6, dx + pw, dy + 1, TFT_RED);
-            delay(10);
-        }
-        else
-        {
-            tft.drawLine(dx, dy + 5, dx + pw, dy, TFT_WHITE);
-            old_value++;
-            tft.drawLine(dx, dy - 6, dx + pw, dy - 1, TFT_RED);
-            delay(10);
-        }
-    }
-}
+//         if (old_value > new_value)
+//         {
+//             tft.drawLine(dx, dy - 5, dx + pw, dy, TFT_WHITE);
+//             old_value--;
+//             tft.drawLine(dx, dy + 6, dx + pw, dy + 1, TFT_RED);
+//             delay(10);
+//         }
+//         else
+//         {
+//             tft.drawLine(dx, dy + 5, dx + pw, dy, TFT_WHITE);
+//             old_value++;
+//             tft.drawLine(dx, dy - 6, dx + pw, dy - 1, TFT_RED);
+//             delay(10);
+//         }
+//     }
+// }
 
 void sendMQTTSensors() {
     DynamicJsonDocument doc(1024);
@@ -335,10 +335,16 @@ void printClock() {
             tft.setTextColor(TFT_WHITE, TFT_BLACK);
             tft.setTextSize(1);
             tft.fillRect(BINS_X - 110, BINS_Y -20, 260, 100, TFT_BLACK);
-            tft.drawString("Bins:", BINS_X - 102, BINS_Y -16);
+            tft.drawString("Bins:", BINS_X - 55, BINS_Y -16);
 
-            drawCircle(BINS_X, BINS_Y, 20, TFT_RED, (landfillBin<7));
-            drawCircle(BINS_X + 50, BINS_Y, 20, TFT_YELLOW, (recycleBin<7));
+            if (landfillBin < 7) {
+                drawCircle(BINS_X + 50, BINS_Y, 20, TFT_RED, 1);
+            } else {
+                drawCircle(BINS_X + 50, BINS_Y, 20, TFT_YELLOW, 1);
+            }
+
+            
+
 
             // if (gardenBin<7) {
             //     drawCircle(BINS_X + 100, BINS_Y, 20, TFT_GREEN, true);
@@ -383,10 +389,10 @@ void setup() {
     touch_calibrate();
     initButtons();
 
-    char q[] = "C";
-    plotLinear(q, 40, 160);
-    char r[] = "%H";
-    plotLinear(r, 120, 160);
+    // char q[] = "C";
+    // plotLinear(q, 40, 160);
+    // char r[] = "%H";
+    // plotLinear(r, 120, 160);
 
     client.setServer(mqtt_broker, mqtt_port);
     client.setCallback(callback);
@@ -474,8 +480,50 @@ void loop() {
     if (updateTime <= millis()) {
         updateTime = millis() + 1000;
         aht.getEvent(&humidity, &temp);// populate temp and humidity objects with fresh data
-        plotPointer(int(temp.temperature), old_temp, 1, 40);
-        plotPointer(int(humidity.relative_humidity), old_humid, 3, 100);
+        // plotPointer(int(temp.temperature), old_temp, 1, 40);
+        // plotPointer(int(humidity.relative_humidity), old_humid, 3, 100);
+
+        if (int(temp.temperature) != old_temp) {
+            old_temp = int(temp.temperature);
+
+            tft.setFreeFont(FF3);
+            tft.setTextSize(1);
+
+            // Update digital time
+            int16_t xpos = 30;
+            int16_t ypos = 140;
+
+            tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // Font 7 is to show a pseudo 7 segment display.
+            // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
+            tft.drawString("888",xpos,ypos); // Overwrite the text to clear it
+            tft.setTextColor(TFT_DARKCYAN); // Orange
+            tft.fillRect(xpos, ypos-20, 80, 80, TFT_BLACK);
+
+            xpos += tft.drawNumber(int(temp.temperature),xpos,ypos,7);
+            tft.drawChar('c',xpos,ypos+40);
+
+        }
+        if (int(humidity.relative_humidity) != old_humid) {
+            old_humid = int(humidity.relative_humidity);
+
+            tft.setFreeFont(FF3);
+            tft.setTextSize(1);
+
+            // Update digital time
+            int16_t xpos = 130;
+            int16_t ypos = 140;
+            tft.fillRect(xpos, ypos-20, 80, 80, TFT_BLACK);
+
+            tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // Font 7 is to show a pseudo 7 segment display.
+            // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
+            tft.drawString("888",xpos,ypos); // Overwrite the text to clear it
+            tft.setTextColor(TFT_DARKCYAN); // Orange
+            
+            xpos += tft.drawNumber(int(humidity.relative_humidity),xpos,ypos,7);
+            tft.drawChar('%',xpos,ypos+40);
+        }
     }
 
     if (sensorTime <= millis()) {
