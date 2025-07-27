@@ -51,6 +51,8 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 const char *mqtt_broker = "mqtt.local";
 const char *toggle_topic = "fairylights/toggle";
 const char *state_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
+const char *humid_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
+const char *temp_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
 byte on_state[] = {'o','n'};
 const int mqtt_port = 1883;
 
@@ -63,7 +65,7 @@ int old_humid = 0;
 
 // Wifi
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient pubSubClient(espClient);
 
 // Bin dats
 uint8_t lastDay = 0;
@@ -165,15 +167,11 @@ void sendMQTTSensors() {
     DynamicJsonDocument doc(1024);
     char buffer[256];
 
-    doc["temperature"] = temp.temperature;
-    doc["humidity"] = humidity.relative_humidity;
+    doc["temperature"] = std::round(temp.temperature * 10.0) / 10.0;
+    doc["humidity"] = std::round(humidity.relative_humidity * 10.0) / 10.0;
 
     size_t n = serializeJson(doc, buffer);
-    bool b = client.publish(screenStateTopic.c_str(), buffer, n);
-    Serial.print("Sensor response: ");
-    Serial.println(b);
-    Serial.println(screenStateTopic);
-    Serial.println(buffer);
+    bool b = pubSubClient.publish(screenStateTopic.c_str(), buffer, n);
 }
 
 void touch_calibrate() {
@@ -244,13 +242,13 @@ void callback(char *topic, byte *payload, unsigned int length) {
     } else {
         Serial.println("New state is off");
         fairyButton.drawSmoothButton(false, 3, TFT_BLACK, "OFF");
-    }
+    } 
 }
 
 void fairyButton_pressAction(void) {
     if (fairyButton.justPressed()) {
         Serial.println("Button toggled");
-        client.publish(toggle_topic, "Light toggle.");
+        pubSubClient.publish(toggle_topic, "Light toggle.");
         fairyButton.setPressTime(millis());
     }
 }
@@ -394,21 +392,21 @@ void setup() {
     // char r[] = "%H";
     // plotLinear(r, 120, 160);
 
-    client.setServer(mqtt_broker, mqtt_port);
-    client.setCallback(callback);
-    while (!client.connected()) {
+    pubSubClient.setServer(mqtt_broker, mqtt_port);
+    pubSubClient.setCallback(callback);
+    while (!pubSubClient.connected()) {
         String client_id = "esp32-client-";
         client_id += String(WiFi.macAddress());
         Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
-        if (client.connect(client_id.c_str())) { 
+        if (pubSubClient.connect(client_id.c_str())) { 
             Serial.println("EMQX MQTT broker connected");
         } else {
             Serial.print("failed with state ");
-            Serial.print(client.state());
+            Serial.print(pubSubClient.state());
             delay(2000);
         }
     }
-    client.subscribe(state_topic);
+    pubSubClient.subscribe(state_topic);
 
     if (! aht.begin()) {
         Serial.println("Could not find AHT? Check wiring");
@@ -468,13 +466,29 @@ void loop() {
         }
     }
 
-    client.loop();
+    pubSubClient.loop();
     printClock();
 
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("Reconnecting WiFi");
         WiFi.begin(WIFI_SSID, WIFI_PWD);
         delay(500);
+
+        pubSubClient.setServer(mqtt_broker, mqtt_port);
+        pubSubClient.setCallback(callback);
+        while (!pubSubClient.connected()) {
+            String client_id = "esp32-client-";
+            client_id += String(WiFi.macAddress());
+            Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
+            if (pubSubClient.connect(client_id.c_str())) { 
+                Serial.println("EMQX MQTT broker connected");
+            } else {
+                Serial.print("failed with state ");
+                Serial.print(pubSubClient.state());
+                delay(2000);
+            }
+        }
+        pubSubClient.subscribe(state_topic);
     }
 
     if (updateTime <= millis()) {

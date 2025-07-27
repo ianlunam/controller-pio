@@ -1,0 +1,11 @@
+---
+services:
+
+  rtl_433:
+    image: repo.local:5000/myrtl_433:latest
+    container_name: rtl_433
+    devices:
+      -  /dev/bus/usb/001/006
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
