@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <math.h>
 #include <time.h>
+#include <string>
 
 TFT_eSPI tft = TFT_eSPI();
 Adafruit_AHTX0 aht;
@@ -48,12 +49,13 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 #define BINS_Y 280
 
 // MQTT Broker
-const char *mqtt_broker = "mqtt.local";
-const char *toggle_topic = "fairylights/toggle";
-const char *state_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
-const char *humid_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
-const char *temp_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
-byte on_state[] = {'o','n'};
+String mqtt_broker = "mqtt.local";
+String toggle_topic = "fairylights/toggle";
+String state_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
+String humidity_topic = "homeassistant/sensor/t_h_sensor_humidity/state";
+String temperature_topic = "homeassistant/sensor/t_h_sensor_temperature/state";
+
+String on_state = "on";
 const int mqtt_port = 1883;
 
 String screenStateTopic = "";
@@ -62,6 +64,12 @@ uint32_t sensorTime = 0;
 sensors_event_t humidity, temp;
 int old_temp = 0;
 int old_humid = 0;
+
+// Outside version
+int out_temp = 0;
+int out_humid = 0;
+int old_out_temp = 0;
+int old_out_humid = 0;
 
 // Wifi
 WiFiClient espClient;
@@ -236,19 +244,33 @@ void touch_calibrate() {
 
 void callback(char *topic, byte *payload, unsigned int length) {
     tft.setFreeFont(FF18);
-    if (memcmp(payload, on_state, sizeof(on_state)) == 0) {
-        Serial.println("New state is on");
-        fairyButton.drawSmoothButton(true, 3, TFT_BLACK, "ON");
-    } else {
-        Serial.println("New state is off");
-        fairyButton.drawSmoothButton(false, 3, TFT_BLACK, "OFF");
+    String sTopic(topic);
+    String sPayload(payload, length);
+
+    Serial.println(sTopic);
+    Serial.println(sPayload);
+
+    if (sTopic == state_topic) {
+        if (sPayload == on_state) {
+            Serial.println("New state is on");
+            fairyButton.drawSmoothButton(true, 3, TFT_BLACK, "ON");
+        } else {
+            Serial.println("New state is off");
+            fairyButton.drawSmoothButton(false, 3, TFT_BLACK, "OFF");
+        }
+    } else if (sTopic == humidity_topic) {
+        out_humid = std::stoi(sPayload.c_str());
+        Serial.println("New Humid: " + out_humid);
+    } else if (sTopic == temperature_topic) {
+        out_temp = std::stoi(sPayload.c_str());
+        Serial.println("New Temp: " + out_temp);
     } 
 }
 
 void fairyButton_pressAction(void) {
     if (fairyButton.justPressed()) {
         Serial.println("Button toggled");
-        pubSubClient.publish(toggle_topic, "Light toggle.");
+        pubSubClient.publish(toggle_topic.c_str(), "Light toggle.");
         fairyButton.setPressTime(millis());
     }
 }
@@ -258,8 +280,8 @@ void initButtons() {
     tft.setCursor(BUTTON_X - 10, BUTTON_Y - 10);
     tft.print("Fairy Lights");
 
-    char q[] = "OFF";
-    fairyButton.initButtonUL(BUTTON_X, BUTTON_Y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_BLACK, TFT_GREEN, q, 1);
+    String q("OFF");
+    fairyButton.initButtonUL(BUTTON_X, BUTTON_Y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_BLACK, TFT_GREEN, (char *)q.c_str(), 1);
     fairyButton.setPressAction(fairyButton_pressAction);
     fairyButton.drawSmoothButton(false, 3, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
 
@@ -316,8 +338,8 @@ void printClock() {
             tft.fillRect(DIGITAL_X, DIGITAL_Y + 100, 280, 100, TFT_BLACK);
             tft.setTextColor(TFT_GREEN, TFT_BLACK);
             tft.setCursor (DIGITAL_X + 80, DIGITAL_Y + 180);
-            char ptr[10];
-            int rc = strftime(ptr, 10, "%a", &timeinfo);
+            char ptr[5];
+            int rc = strftime(ptr, 5, "%a", &timeinfo);
             tft.print(ptr);
 
             int timelapse = daysDiff();
@@ -392,7 +414,7 @@ void setup() {
     // char r[] = "%H";
     // plotLinear(r, 120, 160);
 
-    pubSubClient.setServer(mqtt_broker, mqtt_port);
+    pubSubClient.setServer(mqtt_broker.c_str(), mqtt_port);
     pubSubClient.setCallback(callback);
     while (!pubSubClient.connected()) {
         String client_id = "esp32-client-";
@@ -406,7 +428,9 @@ void setup() {
             delay(2000);
         }
     }
-    pubSubClient.subscribe(state_topic);
+    pubSubClient.subscribe(state_topic.c_str());
+    pubSubClient.subscribe(humidity_topic.c_str());
+    pubSubClient.subscribe(temperature_topic.c_str());
 
     if (! aht.begin()) {
         Serial.println("Could not find AHT? Check wiring");
@@ -474,7 +498,7 @@ void loop() {
         WiFi.begin(WIFI_SSID, WIFI_PWD);
         delay(500);
 
-        pubSubClient.setServer(mqtt_broker, mqtt_port);
+        pubSubClient.setServer(mqtt_broker.c_str(), mqtt_port);
         pubSubClient.setCallback(callback);
         while (!pubSubClient.connected()) {
             String client_id = "esp32-client-";
@@ -488,7 +512,9 @@ void loop() {
                 delay(2000);
             }
         }
-        pubSubClient.subscribe(state_topic);
+        pubSubClient.subscribe(state_topic.c_str());
+        pubSubClient.subscribe(humidity_topic.c_str());
+        pubSubClient.subscribe(temperature_topic.c_str());
     }
 
     if (updateTime <= millis()) {
@@ -538,7 +564,56 @@ void loop() {
             xpos += tft.drawNumber(int(humidity.relative_humidity),xpos,ypos,7);
             tft.drawChar('%',xpos,ypos+40);
         }
+
+
+
+
+        if (out_temp != old_out_temp) {
+            old_out_temp = out_temp;
+
+            tft.setFreeFont(FF3);
+            tft.setTextSize(1);
+
+            // Update digital time
+            int16_t xpos = 30;
+            int16_t ypos = 220;
+
+            tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // Font 7 is to show a pseudo 7 segment display.
+            // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
+            tft.drawString("888",xpos,ypos); // Overwrite the text to clear it
+            tft.setTextColor(TFT_DARKCYAN); // Orange
+            tft.fillRect(xpos, ypos-20, 80, 80, TFT_BLACK);
+
+            xpos += tft.drawNumber(out_temp,xpos,ypos,7);
+            tft.drawChar('c',xpos,ypos+40);
+
+        }
+        if (out_humid != old_out_humid) {
+            old_out_humid = out_humid;
+
+            tft.setFreeFont(FF3);
+            tft.setTextSize(1);
+
+            // Update digital time
+            int16_t xpos = 130;
+            int16_t ypos = 220;
+            tft.fillRect(xpos, ypos-20, 80, 80, TFT_BLACK);
+
+            tft.setTextColor(TFT_BLACK, TFT_BLACK); // Set font colour to black to wipe image
+            // Font 7 is to show a pseudo 7 segment display.
+            // Font 7 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 0 : .
+            tft.drawString("888",xpos,ypos); // Overwrite the text to clear it
+            tft.setTextColor(TFT_DARKCYAN); // Orange
+            
+            xpos += tft.drawNumber(out_humid,xpos,ypos,7);
+            tft.drawChar('%',xpos,ypos+40);
+        }
     }
+
+
+
+
 
     if (sensorTime <= millis()) {
         sensorTime = millis() + 10000;
