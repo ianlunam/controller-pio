@@ -52,8 +52,8 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 String mqtt_broker = "mqtt.local";
 String toggle_topic = "fairylights/toggle";
 String state_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
-String humidity_topic = "homeassistant/sensor/t_h_sensor_humidity/state";
-String temperature_topic = "homeassistant/sensor/t_h_sensor_temperature/state";
+String humidity_topic = "homeassistant/weather/forecast_harrisfield/humidity";
+String temperature_topic = "homeassistant/weather/forecast_harrisfield/temperature";
 
 String on_state = "on";
 const int mqtt_port = 1883;
@@ -497,7 +497,9 @@ void loop() {
         Serial.println("Reconnecting WiFi");
         WiFi.begin(WIFI_SSID, WIFI_PWD);
         delay(500);
+    }
 
+    if (!pubSubClient.connected() && WiFi.status() == WL_CONNECTED) {
         pubSubClient.setServer(mqtt_broker.c_str(), mqtt_port);
         pubSubClient.setCallback(callback);
         while (!pubSubClient.connected()) {
