@@ -49,5 +49,6 @@
         "streambuf": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp"
-    }
+    },
+    "idf.currentSetup": "/home/ian/.espressif/v6.0.1/esp-idf"
 }

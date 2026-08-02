@@ -49,14 +49,12 @@ uint8_t hh, mm, ss;    // Get H, M, S from compile time
 #define BINS_Y 280
 
 // MQTT Broker
-String mqtt_broker = "mqtt.local";
 String toggle_topic = "fairylights/toggle";
-String state_topic = "homeassistant/switch/sonoff_1001ffea20_1/state";
-String humidity_topic = "homeassistant/weather/forecast_harrisfield/humidity";
-String temperature_topic = "homeassistant/weather/forecast_harrisfield/temperature";
+String state_topic = "homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state";
+const String humidity_topic = "homeassistant/weather/forecast_home/humidity";
+const String temperature_topic = "homeassistant/weather/forecast_home/temperature";
 
 String on_state = "on";
-const int mqtt_port = 1883;
 
 String screenStateTopic = "";
 uint32_t updateTime = 0;
@@ -284,7 +282,6 @@ void initButtons() {
     fairyButton.initButtonUL(BUTTON_X, BUTTON_Y, BUTTON_W, BUTTON_H, TFT_WHITE, TFT_BLACK, TFT_GREEN, (char *)q.c_str(), 1);
     fairyButton.setPressAction(fairyButton_pressAction);
     fairyButton.drawSmoothButton(false, 3, TFT_BLACK); // 3 is outline width, TFT_BLACK is the surrounding background colour for anti-aliasing
-
 }
 
 void printClock() {
@@ -414,13 +411,13 @@ void setup() {
     // char r[] = "%H";
     // plotLinear(r, 120, 160);
 
-    pubSubClient.setServer(mqtt_broker.c_str(), mqtt_port);
+    pubSubClient.setServer(MQTT_BROKER, MQTT_PORT);
     pubSubClient.setCallback(callback);
     while (!pubSubClient.connected()) {
         String client_id = "esp32-client-";
         client_id += String(WiFi.macAddress());
         Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
-        if (pubSubClient.connect(client_id.c_str())) { 
+        if (pubSubClient.connect(client_id.c_str(), MQTT_USER, MQTT_PWD)) { 
             Serial.println("EMQX MQTT broker connected");
         } else {
             Serial.print("failed with state ");
@@ -476,6 +473,7 @@ void loop() {
     if (millis() - scanTime >= 50) {
         // Pressed will be set true if there is a valid touch on the screen
         bool pressed = tft.getTouch(&t_x, &t_y);
+        Serial.printf("Touch coordinates: %d, %d\n", t_x, t_y);
         scanTime = millis();
         for (uint8_t b = 0; b < buttonCount; b++) {
             if (pressed) {
@@ -500,13 +498,13 @@ void loop() {
     }
 
     if (!pubSubClient.connected() && WiFi.status() == WL_CONNECTED) {
-        pubSubClient.setServer(mqtt_broker.c_str(), mqtt_port);
+        pubSubClient.setServer(MQTT_BROKER, MQTT_PORT);
         pubSubClient.setCallback(callback);
         while (!pubSubClient.connected()) {
             String client_id = "esp32-client-";
             client_id += String(WiFi.macAddress());
             Serial.printf("The client %s connects to the public MQTT broker\n", client_id.c_str());
-            if (pubSubClient.connect(client_id.c_str())) { 
+            if (pubSubClient.connect(client_id.c_str(), MQTT_USER, MQTT_PWD)) { 
                 Serial.println("EMQX MQTT broker connected");
             } else {
                 Serial.print("failed with state ");
