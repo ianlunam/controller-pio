@@ -14,9 +14,32 @@
 * Library: TFT_eSPI
 * TFT_eSPI User Setup: See [platformio.ini](./platformio.ini)
 * Adafruit_AHTX0
-* Preferences
 * WiFi.h
 * PubSubClient
+
+## Build Configuration
+
+Secrets live in `../.secrets` (outside the repo), one `KEY value` pair per
+line. All of these are required; `scripts/secret.sh` aborts the build with the
+offending key name if one is missing or empty, rather than silently compiling
+in an empty string.
+
+| Key | Example |
+| --- | ------- |
+| `WIFI_SSID` | `my-network` |
+| `WIFI_PWD` | `hunter2` |
+| `TIMEZONE` | `NZST-12NZDT,M9.5.0,M4.1.0/3` |
+| `MQTT_BROKER` | `homeassistant.local` |
+| `MQTT_PORT` | `1883` |
+| `MQTT_USER` | `screen` |
+| `MQTT_PWD` | `hunter2` |
+
+Values are read with `awk '$1 == key { print $2 }'`, so they cannot contain
+spaces.
+
+The MQTT topics are derived from the MAC address and logged over serial at
+boot; check there for the state and availability topics to point Home
+Assistant at.
 
 ## MPI3501 Pins
 
