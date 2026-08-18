@@ -100,7 +100,9 @@ static constexpr uint32_t TIME_LOOKUP_MS = 10;
 // fresh press to justPressed(), so one finger press could toggle several times.
 static constexpr uint32_t BUTTON_DEBOUNCE_MS = 400;
 
-// Bin schedule anchor: 2024-09-26 was a landfill collection day.
+// Bin schedule anchor: 2024-09-26 was a landfill collection day. Recycle is the
+// same fortnightly cycle offset by a week.
+enum BinType { BIN_LANDFILL, BIN_RECYCLE };
 static constexpr int BIN_EPOCH_YEAR  = 2024;
 static constexpr int BIN_EPOCH_MONTH = 9;
 static constexpr int BIN_EPOCH_DAY   = 26;
@@ -204,6 +206,18 @@ static int daysSinceBinEpoch(const struct tm &nowLocal) {
     time_t t1 = mktime(&today);
     time_t t2 = mktime(&epoch);
     return static_cast<int>(lround(difftime(t1, t2) / 86400.0));
+}
+
+// Which bin goes out next, which is what the single coloured circle shows:
+// red for landfill, yellow for recycle. The two collections are the same
+// fortnightly cycle a week apart, so the wait for the next landfill collection
+// decides it on its own - under a week away and landfill comes first,
+// otherwise the recycle collection falls in between.
+static BinType nextBinType(int daysSinceEpoch) {
+    // Floored modulo, so a clock reading a date before the epoch still lands
+    // in [0,14) instead of going negative.
+    const int phase = ((daysSinceEpoch % 14) + 14) % 14;
+    return (14 - phase) < 7 ? BIN_LANDFILL : BIN_RECYCLE;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,16 +446,15 @@ static void drawDayAndBins() {
         tft.print(dayName);
     }
 
-    // Landfill is fortnightly from the epoch date
-    const int timelapse   = daysSinceBinEpoch(timeinfo);
-    const int landfillBin = 14 - (timelapse % 14);
+    const BinType binType = nextBinType(daysSinceBinEpoch(timeinfo));
 
     tft.setFreeFont(FF19);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextSize(1);
     tft.fillRect(BINS_X - 110, BINS_Y - 20, 260, 100, TFT_BLACK);
     tft.drawString("Bins:", BINS_X - 55, BINS_Y - 16);
-    drawCircle(BINS_X + 50, BINS_Y, 20, landfillBin < 7 ? TFT_RED : TFT_YELLOW, true);
+    drawCircle(BINS_X + 50, BINS_Y, 20,
+               binType == BIN_LANDFILL ? TFT_RED : TFT_YELLOW, true);
 }
 
 static void printClock() {
