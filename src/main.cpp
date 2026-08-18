@@ -210,14 +210,16 @@ static int daysSinceBinEpoch(const struct tm &nowLocal) {
 
 // Which bin goes out next, which is what the single coloured circle shows:
 // red for landfill, yellow for recycle. The two collections are the same
-// fortnightly cycle a week apart, so the wait for the next landfill collection
-// decides it on its own - under a week away and landfill comes first,
-// otherwise the recycle collection falls in between.
+// fortnightly cycle a week apart. Collection day itself counts as zero days
+// away, so the circle holds the colour of the bin due that morning and only
+// flips once the day is over.
 static BinType nextBinType(int daysSinceEpoch) {
     // Floored modulo, so a clock reading a date before the epoch still lands
     // in [0,14) instead of going negative.
-    const int phase = ((daysSinceEpoch % 14) + 14) % 14;
-    return (14 - phase) < 7 ? BIN_LANDFILL : BIN_RECYCLE;
+    const int phase      = ((daysSinceEpoch % 14) + 14) % 14;
+    const int toLandfill = (14 - phase) % 14;  // 0 on landfill collection day
+    const int toRecycle  = (21 - phase) % 14;  // 0 on recycle collection day
+    return toLandfill < toRecycle ? BIN_LANDFILL : BIN_RECYCLE;
 }
 
 // ---------------------------------------------------------------------------
