@@ -41,6 +41,22 @@ The MQTT topics are derived from the MAC address and logged over serial at
 boot; check there for the state and availability topics to point Home
 Assistant at.
 
+## Tests
+
+The pure logic — the bin schedule and the MQTT payload parsing — lives in
+`lib/BinSchedule` and `lib/MqttPayload` with no Arduino dependency, so it
+compiles for the host:
+
+```sh
+pio test -e native
+```
+
+That runs the whole fortnightly cycle and the payload edge cases in about a
+second, rather than flashing and waiting for a collection day. Everything else
+in `src/main.cpp` touches hardware and is not covered.
+
+`pio run` builds the firmware only; the native environment is opt-in.
+
 ## MPI3501 Pins
 
 These took some working out. The above two reference documents each had some parts but neither was clear about what pin 22 was for. Plus a bit of trial and error, I managed to get it working.

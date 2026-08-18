@@ -12,6 +12,9 @@
 #include <Adafruit_AHTX0.h>
 
 #include <ArduinoJson.h>
+
+#include <BinSchedule.h>
+#include <MqttPayload.h>
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
@@ -90,6 +93,11 @@ static constexpr uint32_t SENSOR_READ_MS       = 1000;
 static constexpr uint32_t SENSOR_PUBLISH_MS    = 10000;
 static constexpr uint32_t WIFI_RETRY_MS        = 10000;
 static constexpr uint32_t MQTT_RETRY_MS        = 5000;
+// PubSubClient defaults to 15s waiting for a CONNACK, which is 15s of frozen
+// display per retry when the broker is reachable but not answering.
+static constexpr uint16_t MQTT_SOCKET_TIMEOUT_SEC = 2;
+// Re-resolve the broker after this many consecutive failures, in case it moved.
+static constexpr uint8_t MQTT_FAILURES_BEFORE_RERESOLVE = 3;
 static constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
 
 // getLocalTime() busy-waits for its whole timeout while the clock is unset, so
@@ -100,12 +108,6 @@ static constexpr uint32_t TIME_LOOKUP_MS = 10;
 // fresh press to justPressed(), so one finger press could toggle several times.
 static constexpr uint32_t BUTTON_DEBOUNCE_MS = 400;
 
-// Bin schedule anchor: 2024-09-26 was a landfill collection day. Recycle is the
-// same fortnightly cycle offset by a week.
-enum BinType { BIN_LANDFILL, BIN_RECYCLE };
-static constexpr int BIN_EPOCH_YEAR  = 2024;
-static constexpr int BIN_EPOCH_MONTH = 9;
-static constexpr int BIN_EPOCH_DAY   = 26;
 
 // ---------------------------------------------------------------------------
 // Hardware
@@ -126,6 +128,10 @@ static constexpr uint8_t buttonCount = sizeof(btn) / sizeof(btn[0]);
 static char screenStateTopic[64];
 static char availabilityTopic[64];
 static char mqttClientId[32];
+
+static IPAddress brokerIp;
+static bool    brokerResolved = false;
+static uint8_t mqttFailures   = 0;
 
 static struct tm timeinfo;
 static uint8_t lastDrawnMinute = 99;  // impossible value, forces the first draw
@@ -150,18 +156,6 @@ static bool outsideHumidValid = false;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// Parse a decimal integer, tolerating a trailing fraction ("12.5" -> 12).
-// Returns false for the "unknown" / "unavailable" / "" payloads Home Assistant
-// publishes when an entity has no value. std::stoi used to be used here, which
-// throws on those, and an uncaught throw reboots the board.
-static bool parseInt(const char *s, int &out) {
-    char *end = nullptr;
-    long v = strtol(s, &end, 10);
-    if (end == s) return false;
-    out = static_cast<int>(v);
-    return true;
-}
 
 static void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t colour, bool fill) {
     if (fill) {
@@ -189,38 +183,6 @@ static void drawValue(int value, int &shown, int16_t x, int16_t y, char unit) {
     tft.drawChar(unit, cursor, y + 40);
 }
 
-// Whole days from the bin epoch to `nowLocal`. Both ends are normalised to
-// local midnight so the count ticks over at midnight rather than at midday,
-// and lround absorbs the one hour skew across a daylight saving boundary.
-static int daysSinceBinEpoch(const struct tm &nowLocal) {
-    struct tm today = nowLocal;
-    today.tm_hour = today.tm_min = today.tm_sec = 0;
-    today.tm_isdst = -1;
-
-    struct tm epoch = {};
-    epoch.tm_year  = BIN_EPOCH_YEAR - 1900;
-    epoch.tm_mon   = BIN_EPOCH_MONTH - 1;
-    epoch.tm_mday  = BIN_EPOCH_DAY;
-    epoch.tm_isdst = -1;
-
-    time_t t1 = mktime(&today);
-    time_t t2 = mktime(&epoch);
-    return static_cast<int>(lround(difftime(t1, t2) / 86400.0));
-}
-
-// Which bin goes out next, which is what the single coloured circle shows:
-// red for landfill, yellow for recycle. The two collections are the same
-// fortnightly cycle a week apart. Collection day itself counts as zero days
-// away, so the circle holds the colour of the bin due that morning and only
-// flips once the day is over.
-static BinType nextBinType(int daysSinceEpoch) {
-    // Floored modulo, so a clock reading a date before the epoch still lands
-    // in [0,14) instead of going negative.
-    const int phase      = ((daysSinceEpoch % 14) + 14) % 14;
-    const int toLandfill = (14 - phase) % 14;  // 0 on landfill collection day
-    const int toRecycle  = (21 - phase) % 14;  // 0 on recycle collection day
-    return toLandfill < toRecycle ? BIN_LANDFILL : BIN_RECYCLE;
-}
 
 // ---------------------------------------------------------------------------
 // Touch calibration
@@ -303,6 +265,24 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length) {
     }
 }
 
+// Resolve the broker once and then connect straight to its address.
+// MQTT_BROKER is an mDNS name, and resolving it inside every connect attempt
+// is the slowest part of a retry; setServer(IPAddress) clears the stored
+// domain, so PubSubClient skips the lookup entirely.
+static void resolveBroker() {
+    if (brokerResolved || WiFi.status() != WL_CONNECTED) return;
+
+    if (WiFi.hostByName(MQTT_BROKER, brokerIp) == 1) {
+        brokerResolved = true;
+        pubSubClient.setServer(brokerIp, MQTT_PORT);
+        Serial.printf("Broker %s resolved to %s\n", MQTT_BROKER, brokerIp.toString().c_str());
+    } else {
+        // Fall back to resolving by name on each attempt rather than not trying
+        pubSubClient.setServer(MQTT_BROKER, MQTT_PORT);
+        Serial.printf("Could not resolve %s yet\n", MQTT_BROKER);
+    }
+}
+
 // One connection attempt. Never blocks waiting for a retry; the caller decides
 // when to try again so that the display, clock and OTA keep running meanwhile.
 static bool mqttConnect() {
@@ -313,9 +293,14 @@ static bool mqttConnect() {
                                    availabilityTopic, 0, true, PAYLOAD_OFFLINE);
     if (!ok) {
         Serial.printf("MQTT connect failed, state %d\n", pubSubClient.state());
+        if (++mqttFailures >= MQTT_FAILURES_BEFORE_RERESOLVE) {
+            mqttFailures   = 0;
+            brokerResolved = false;  // the broker may have moved; look it up again
+        }
         return false;
     }
 
+    mqttFailures = 0;
     Serial.println("MQTT broker connected");
     pubSubClient.publish(availabilityTopic, PAYLOAD_ONLINE, true);
     pubSubClient.subscribe(STATE_TOPIC);
@@ -331,6 +316,7 @@ static void ensureMqtt() {
     if (millis() - lastAttempt < MQTT_RETRY_MS) return;
 
     lastAttempt = millis();
+    resolveBroker();
     mqttConnect();
 }
 
@@ -610,6 +596,8 @@ void setup() {
 
     pubSubClient.setServer(MQTT_BROKER, MQTT_PORT);
     pubSubClient.setCallback(mqttCallback);
+    pubSubClient.setSocketTimeout(MQTT_SOCKET_TIMEOUT_SEC);
+    resolveBroker();
     mqttConnect();  // one attempt; ensureMqtt() retries if it fails
 
     // Carry on without the sensor rather than spinning forever: the clock, the
