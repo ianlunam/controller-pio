@@ -196,7 +196,32 @@ polling.
 
 ## Code
 
-My code displays a simple button on the screen which, when clicked, sends a message to an MQTT broker which is attached to Home Assistant via the MQTT integration. I have an Automation set up to toggle the switch on receiving this message. That switch has changed hardware over time — it began as a Sonoff (eWeLink) and is now one gang of a 3-gang light switch reporting through the Tuya integration — which is why the firmware builds its topics from an entity id that is easy to repoint rather than a hard-coded topic string. Also set up in Home Assistant is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
+My code displays a simple button on the screen which, when clicked, publishes to
+`fairylights/toggle`. It also subscribes to the switch's state through the
+StateStream integration, and colours the button to match.
+
+The two directions are independent, and only the *reading* direction currently
+works. Nothing subscribes to `fairylights/toggle` any more: the automation that
+used to act on it dated from a 433MHz button read through rtl_433, and has been
+removed. Pressing the on-screen button therefore does nothing until something
+consumes that topic again — for example:
+
+```yaml
+automation:
+  - alias: Fairy lights toggle from the lounge screen
+    trigger:
+      - platform: mqtt
+        topic: fairylights/toggle
+    action:
+      - service: switch.toggle
+        target:
+          entity_id: switch.dining_room_light_switch_switch_3
+```
+
+The switch itself has changed hardware over time — it began as a Sonoff
+(eWeLink) and is now one gang of a 3-gang light switch reporting through the
+Tuya integration. That is why the firmware builds its topics from an entity id
+that is easy to repoint rather than from a hard-coded topic string. Also set up in Home Assistant is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
 
 My code contains examples of how to:
 
