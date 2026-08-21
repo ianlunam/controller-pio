@@ -172,18 +172,20 @@ Entirely based on the examples from TFT_eSPI, PubSubClient and some others I don
 * [My code](./src/main.cpp)
 * State Stream setup in Home Assistant's `configuration.yaml`
 
-> **TODO** This block does not match what the firmware subscribes to, on two
-> counts, and needs checking against the live `configuration.yaml`:
->
-> 1. It publishes `switch.sonoff_1001ffea20_1`, which gives the topic
->    `homeassistant/switch/sonoff_1001ffea20_1/state`. The firmware listens on
->    `homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state` — note the
->    `fairy_lights_` prefix. The entity was most likely renamed and this was
->    never updated; whichever is stale, the two have to agree.
-> 2. It includes the `switch` domain only, so it cannot be what publishes
->    `homeassistant/weather/forecast_home/temperature` and `/humidity`, which
->    the firmware also subscribes to. Either the `weather` domain is missing
->    here, or something else supplies those topics.
+Confirmed against live broker traffic: the switch state does arrive on
+`homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state`, and the two
+weather values arrive on `homeassistant/weather/forecast_home/humidity` and
+`/temperature`. Two notes on the block below:
+
+1. The `entities:` entry names `switch.sonoff_1001ffea20_1`, without the
+   `fairy_lights_` prefix the firmware subscribes to. It looks stale, and it is
+   redundant either way, because `domains: - switch` already publishes every
+   switch. Kept here so the discrepancy is on the record.
+2. `- weather` is required for the two weather topics to exist, together with
+   `publish_attributes: true`, since humidity and temperature are attributes of
+   the weather entity rather than its state. It was missing from this block and
+   has been added by inference from the topics actually arriving — worth
+   checking against the live `configuration.yaml`, which is the authority.
 
 ```yaml
 mqtt_statestream:
@@ -193,36 +195,29 @@ mqtt_statestream:
   include:
     domains:
         - switch
+        - weather
     entities:
         - switch.sonoff_1001ffea20_1
 ```
 
 * Sensor Setup
 
-> **TODO** The `state_topic` below is the old decimal MAC format and no longer
-> matches what the firmware publishes, which is now zero-padded hex:
-> `home/screen/XXXXXXXX/state`. The current value is printed over serial at
-> boot — read it from there rather than trying to convert the old one, because
-> `481635231` is genuinely ambiguous and has three valid readings
-> (`301023E7`, `30A305E7`, `30A3341F`). That ambiguity is why the format
-> changed.
->
-> While updating these, consider adding
-> `availability_topic: "home/screen/XXXXXXXX/availability"` to both sensors.
-> The firmware now publishes a retained `online` on connect and registers
-> `offline` as its last will, so Home Assistant can show the screen as
-> unavailable when it drops off instead of holding the last reading forever.
+The topics below are the real ones for this board, read off the serial log at
+boot. They are derived from the MAC, so a different board gives different
+topics: check the log rather than copying these.
 
 ```yaml
 mqtt:
   - sensor:
     - name: "Temperature"
-      state_topic: "home/screen/481635231/state"
+      state_topic: "home/screen/30A3341F/state"
+      availability_topic: "home/screen/30A3341F/availability"
       suggested_display_precision: 1
       unit_of_measurement: "C"
       value_template: "{{ value_json.temperature }}"
     - name: "Humidity"
-      state_topic: "home/screen/481635231/state"
+      state_topic: "home/screen/30A3341F/state"
+      availability_topic: "home/screen/30A3341F/availability"
       suggested_display_precision: 1
       unit_of_measurement: "%"
       value_template: "{{ value_json.humidity }}"
