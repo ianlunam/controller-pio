@@ -329,9 +329,13 @@ static void publishSensors() {
 
     // Two floats need nothing like the 1024 byte heap document this used to
     // allocate every ten seconds.
+    // Round in double, not float. ArduinoJson stores a JsonFloat as double, so
+    // rounding in float and letting it promote reintroduces the very digits the
+    // rounding removed: 22.7f widens to 22.700000762939453 and serialises in
+    // full. Verified on the device.
     StaticJsonDocument<96> doc;
-    doc["temperature"] = roundf(tempEvent.temperature * 10.0f) / 10.0f;
-    doc["humidity"]    = roundf(humidityEvent.relative_humidity * 10.0f) / 10.0f;
+    doc["temperature"] = round(tempEvent.temperature * 10.0) / 10.0;
+    doc["humidity"]    = round(humidityEvent.relative_humidity * 10.0) / 10.0;
 
     char buffer[96];
     size_t n = serializeJson(doc, buffer, sizeof(buffer));
@@ -552,7 +556,11 @@ void setup() {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
-    WiFi.persistent(true);
+    // Not persistent: the credentials are compiled in, so writing them to NVS
+    // on every boot is only flash wear. (This is not what causes the single
+    // AUTH_FAIL logged at ~175ms on a cold boot; that happens either way, and
+    // the association succeeds on the retry about half a second later.)
+    WiFi.persistent(false);
     WiFi.begin(WIFI_SSID, WIFI_PWD);
 
     // Bounded wait. The clock and the local sensor work without WiFi, so a
