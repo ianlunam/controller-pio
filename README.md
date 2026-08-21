@@ -47,6 +47,18 @@ The OTA environment has its own build directory, so the first `make ota` after
 a `make` recompiles from scratch. It also needs firmware already on the board
 that calls `ArduinoOTA.handle()`, so use `make upload` over USB at least once.
 
+`make ota` is verified working: 25 seconds end to end, after which the board
+software-resets itself into the new image. The boot line reports the build, so
+you can confirm which firmware is running without opening anything up:
+
+```
+Starting, firmware 838c485
+```
+
+That string is `git describe` at build time, passed in by `scripts/version.sh`.
+A dirty tree shows as `<hash>-dirty`, which is worth noticing before you send a
+build to something screwed to a wall.
+
 ## Build Configuration
 
 Secrets live in `../.secrets` (outside the repo), one `KEY value` pair per
