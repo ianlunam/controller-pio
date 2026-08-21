@@ -76,10 +76,19 @@ static constexpr int16_t READOUT_H = 80;
 // MQTT topics. Plain literals rather than String globals: these are compared on
 // every inbound message, and repeated small heap allocations fragment the heap
 // over the months this thing stays powered on.
+// mqtt_statestream publishes as <base>/<domain>/<object_id>/<attribute>, so the
+// entity ids below are the only parts that change when something is renamed in
+// Home Assistant. List the candidates with their names using:
+//   mosquitto_sub -h <broker> -u <user> -P <pwd> -v \
+//                 -t 'homeassistant/switch/+/friendly_name'
+#define HA_BASE_TOPIC     "homeassistant"
+#define FAIRY_SWITCH_ID   "dining_room_light_switch_switch_3"
+#define WEATHER_ENTITY_ID "forecast_home"
+
 static constexpr const char *TOGGLE_TOPIC      = "fairylights/toggle";
-static constexpr const char *STATE_TOPIC       = "homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state";
-static constexpr const char *HUMIDITY_TOPIC    = "homeassistant/weather/forecast_home/humidity";
-static constexpr const char *TEMPERATURE_TOPIC = "homeassistant/weather/forecast_home/temperature";
+static constexpr const char *STATE_TOPIC       = HA_BASE_TOPIC "/switch/" FAIRY_SWITCH_ID "/state";
+static constexpr const char *HUMIDITY_TOPIC    = HA_BASE_TOPIC "/weather/" WEATHER_ENTITY_ID "/humidity";
+static constexpr const char *TEMPERATURE_TOPIC = HA_BASE_TOPIC "/weather/" WEATHER_ENTITY_ID "/temperature";
 static constexpr const char *ON_STATE          = "on";
 static constexpr const char *PAYLOAD_ONLINE    = "online";
 static constexpr const char *PAYLOAD_OFFLINE   = "offline";
