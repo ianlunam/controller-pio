@@ -1,90 +1,49 @@
 #include <unity.h>
 
-#include <stdlib.h>
-#include <time.h>
-
-#include "BinSchedule.h"
+#include "BinDay.h"
 #include "MqttPayload.h"
 
 void setUp(void) {}
 void tearDown(void) {}
 
-// --- helpers ---------------------------------------------------------------
+// --- binTypeFromPayload ----------------------------------------------------
 
-static struct tm makeDate(int year, int month, int day, int hour = 12) {
-    struct tm t = {};
-    t.tm_year  = year - 1900;
-    t.tm_mon   = month - 1;
-    t.tm_mday  = day;
-    t.tm_hour  = hour;
-    t.tm_isdst = -1;
-    return t;
+// The exact strings the sensor.bin_day template publishes today.
+static void test_the_two_payloads_the_template_actually_sends(void) {
+    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, binTypeFromPayload("Landfill"));
+    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE,  binTypeFromPayload("Recycles"));
 }
 
-// --- daysSinceBinEpoch -----------------------------------------------------
-
-static void test_epoch_day_is_zero(void) {
-    TEST_ASSERT_EQUAL_INT(0, daysSinceBinEpoch(makeDate(2024, 9, 26)));
+// Reworded templates should keep working rather than silently blanking.
+static void test_recycle_wordings(void) {
+    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, binTypeFromPayload("Recycle"));
+    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, binTypeFromPayload("Recycling"));
+    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, binTypeFromPayload("recycles"));
+    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, binTypeFromPayload("RECYCLES"));
 }
 
-static void test_next_day_is_one(void) {
-    TEST_ASSERT_EQUAL_INT(1, daysSinceBinEpoch(makeDate(2024, 9, 27)));
+static void test_landfill_case_insensitive(void) {
+    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, binTypeFromPayload("landfill"));
+    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, binTypeFromPayload("LANDFILL"));
 }
 
-// NZ daylight saving starts on the last Sunday of September, so this fortnight
-// contains a 23 hour day. Without normalising to midnight and rounding, the
-// hour of skew drags the count to 13.
-static void test_fortnight_across_dst_start_is_exactly_14(void) {
-    TEST_ASSERT_EQUAL_INT(14, daysSinceBinEpoch(makeDate(2024, 10, 10)));
+// Several Home Assistant friendly names on this broker carry a trailing space,
+// so tolerate stray whitespace on the leading edge too.
+static void test_leading_space_tolerated(void) {
+    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, binTypeFromPayload("  Landfill"));
 }
 
-// Time of day must not affect the count: it used to flip at midday because the
-// epoch was midnight while "now" carried the current time.
-static void test_time_of_day_does_not_change_the_count(void) {
-    for (int hour = 0; hour < 24; hour++) {
-        TEST_ASSERT_EQUAL_INT(3, daysSinceBinEpoch(makeDate(2024, 9, 29, hour)));
-    }
-}
-
-static void test_date_before_epoch_is_negative(void) {
-    TEST_ASSERT_EQUAL_INT(-1, daysSinceBinEpoch(makeDate(2024, 9, 25)));
-}
-
-// --- nextBinType -----------------------------------------------------------
-
-// The circle holds each bin's colour through the morning it goes out, so
-// collection day reads as that bin rather than already pointing at the next.
-static void test_landfill_collection_day_reads_landfill(void) {
-    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(0));
-    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(14));
-    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(28));
-}
-
-static void test_recycle_collection_day_reads_recycle(void) {
-    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, nextBinType(7));
-    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, nextBinType(21));
-}
-
-static void test_full_cycle_is_seven_days_each(void) {
-    int landfill = 0, recycle = 0;
-    for (int day = 0; day < BIN_CYCLE_DAYS; day++) {
-        if (nextBinType(day) == BIN_LANDFILL) landfill++;
-        else recycle++;
-    }
-    TEST_ASSERT_EQUAL_INT(7, landfill);
-    TEST_ASSERT_EQUAL_INT(7, recycle);
-}
-
-static void test_days_1_to_7_are_recycle_and_8_to_13_landfill(void) {
-    for (int day = 1; day <= 7; day++)  TEST_ASSERT_EQUAL_INT(BIN_RECYCLE, nextBinType(day));
-    for (int day = 8; day <= 13; day++) TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(day));
-}
-
-// A clock reading a date before the epoch must not fall out of the cycle.
-static void test_negative_days_stay_in_cycle(void) {
-    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(-1));   // phase 13
-    TEST_ASSERT_EQUAL_INT(BIN_LANDFILL, nextBinType(-14));  // phase 0
-    TEST_ASSERT_EQUAL_INT(BIN_RECYCLE,  nextBinType(-7));   // phase 7
+// Home Assistant publishes these when a template has not evaluated yet. The
+// caller holds its last good value on BIN_UNKNOWN rather than clearing the
+// circle, so these must not be mistaken for a bin.
+static void test_placeholders_and_junk_are_unknown(void) {
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload("unknown"));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload("unavailable"));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload(""));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload(nullptr));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload("Garden"));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload("Land"));
+    TEST_ASSERT_EQUAL_INT(BIN_UNKNOWN, binTypeFromPayload("rec"));
 }
 
 // --- parseInt --------------------------------------------------------------
@@ -115,29 +74,19 @@ static void test_rejects_home_assistant_placeholders(void) {
     TEST_ASSERT_FALSE(parseInt("unavailable", out));
     TEST_ASSERT_FALSE(parseInt("", out));
     TEST_ASSERT_FALSE(parseInt(nullptr, out));
-    TEST_ASSERT_EQUAL_INT(42, out);   // left untouched on failure
+    TEST_ASSERT_EQUAL_INT(42, out);  // left untouched on failure
 }
 
 // --- runner ----------------------------------------------------------------
 
 int main(int, char **) {
-    // Pin the zone so the DST assertions are deterministic wherever this runs.
-    setenv("TZ", "NZST-12NZDT,M9.5.0,M4.1.0/3", 1);
-    tzset();
-
     UNITY_BEGIN();
 
-    RUN_TEST(test_epoch_day_is_zero);
-    RUN_TEST(test_next_day_is_one);
-    RUN_TEST(test_fortnight_across_dst_start_is_exactly_14);
-    RUN_TEST(test_time_of_day_does_not_change_the_count);
-    RUN_TEST(test_date_before_epoch_is_negative);
-
-    RUN_TEST(test_landfill_collection_day_reads_landfill);
-    RUN_TEST(test_recycle_collection_day_reads_recycle);
-    RUN_TEST(test_full_cycle_is_seven_days_each);
-    RUN_TEST(test_days_1_to_7_are_recycle_and_8_to_13_landfill);
-    RUN_TEST(test_negative_days_stay_in_cycle);
+    RUN_TEST(test_the_two_payloads_the_template_actually_sends);
+    RUN_TEST(test_recycle_wordings);
+    RUN_TEST(test_landfill_case_insensitive);
+    RUN_TEST(test_leading_space_tolerated);
+    RUN_TEST(test_placeholders_and_junk_are_unknown);
 
     RUN_TEST(test_parses_plain_integer);
     RUN_TEST(test_truncates_a_fraction);

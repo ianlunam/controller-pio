@@ -32,7 +32,7 @@ help:
 	@echo "  erase           erase the whole flash (destructive)"
 	@echo ""
 	@echo "Checking"
-	@echo "  test            run the host unit tests (lib/BinSchedule, lib/MqttPayload)"
+	@echo "  test            run the host unit tests (lib/BinDay, lib/MqttPayload)"
 	@echo "  check           run static analysis over src/ and lib/"
 	@echo "  check-secrets   report which keys $(SECRETS) is missing (prints no values)"
 	@echo ""

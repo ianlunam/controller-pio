@@ -73,19 +73,48 @@ Assistant at.
 
 ## Tests
 
-The pure logic — the bin schedule and the MQTT payload parsing — lives in
-`lib/BinSchedule` and `lib/MqttPayload` with no Arduino dependency, so it
+The pure logic — mapping the bin day sensor and parsing MQTT payloads — lives
+in `lib/BinDay` and `lib/MqttPayload` with no Arduino dependency, so it
 compiles for the host:
 
 ```sh
 make test
 ```
 
-That runs the whole fortnightly cycle and the payload edge cases in about a
-second, rather than flashing and waiting for a collection day. Everything else
-in `src/main.cpp` touches hardware and is not covered.
+That covers every payload the sensors can produce, including the "unknown" and
+"unavailable" placeholders, in about a second. Everything else in
+`src/main.cpp` touches hardware and is not covered.
 
 `pio run` builds the firmware only; the native environment is opt-in.
+
+## Bin Day
+
+The coloured circle shows which bin goes out next: red for landfill, yellow for
+recycling. The schedule is **not** computed on the device. It comes from a
+Home Assistant template sensor, `sensor.bin_day`, over MQTT:
+
+```yaml
+template:
+  - sensor:
+    - name: bin_day
+      state: "{% set dt = strptime('Sep 26 2024', '%b %d %Y') %}
+              {% set landiff = ((now().timestamp() / 86400) - (as_timestamp(dt) / 86400)) % 14 %}
+              {% if landiff < 7 -%}Recycles{%- else -%}Landfill{%- endif %}"
+    trigger:
+     - platform: time_pattern
+       minutes: "/1"
+```
+
+Collections are on Wednesdays, and each block runs Thursday to Wednesday so the
+colour holds through the morning the bin actually goes out. The firmware only
+maps the payload (`lib/BinDay`), holding its last good value when the sensor
+reports `unknown` or `unavailable` so the circle never blanks.
+
+The device used to derive this itself from an epoch date. That is gone,
+because it had drifted: it used the same 26 September 2024 anchor but the
+opposite phase convention, so it disagreed with Home Assistant on every
+Thursday — showing the bin that had just gone out rather than the one due
+next. One schedule, in one place, is worth more than a local fallback.
 
 ## MPI3501 Pins
 
@@ -155,7 +184,7 @@ polling.
 
 ## Code
 
-My code displays a simple button on the screen which, when clicked, sends a message to an MQTT broker which is attached to Home Assistant via the MQTT integration. I have an Automation set up on my Sonoff (eWeLink) switch to toggle the switch on receiving this message. Also set up in Home Assistant is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
+My code displays a simple button on the screen which, when clicked, sends a message to an MQTT broker which is attached to Home Assistant via the MQTT integration. I have an Automation set up to toggle the switch on receiving this message. That switch has changed hardware over time — it began as a Sonoff (eWeLink) and is now one gang of a 3-gang light switch reporting through the Tuya integration — which is why the firmware builds its topics from an entity id that is easy to repoint rather than a hard-coded topic string. Also set up in Home Assistant is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
 
 My code contains examples of how to:
 

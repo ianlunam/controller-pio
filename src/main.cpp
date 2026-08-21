@@ -13,7 +13,7 @@
 
 #include <ArduinoJson.h>
 
-#include <BinSchedule.h>
+#include <BinDay.h>
 #include <MqttPayload.h>
 #include <limits.h>
 #include <math.h>
@@ -84,11 +84,14 @@ static constexpr int16_t READOUT_H = 80;
 #define HA_BASE_TOPIC     "homeassistant"
 #define FAIRY_SWITCH_ID   "dining_room_light_switch_switch_3"
 #define WEATHER_ENTITY_ID "forecast_home"
+#define BIN_DAY_ENTITY_ID "bin_day"
 
 static constexpr const char *TOGGLE_TOPIC      = "fairylights/toggle";
 static constexpr const char *STATE_TOPIC       = HA_BASE_TOPIC "/switch/" FAIRY_SWITCH_ID "/state";
 static constexpr const char *HUMIDITY_TOPIC    = HA_BASE_TOPIC "/weather/" WEATHER_ENTITY_ID "/humidity";
 static constexpr const char *TEMPERATURE_TOPIC = HA_BASE_TOPIC "/weather/" WEATHER_ENTITY_ID "/temperature";
+// Home Assistant owns the collection schedule; see lib/BinDay.
+static constexpr const char *BIN_DAY_TOPIC     = HA_BASE_TOPIC "/sensor/" BIN_DAY_ENTITY_ID "/state";
 static constexpr const char *ON_STATE          = "on";
 static constexpr const char *PAYLOAD_ONLINE    = "online";
 static constexpr const char *PAYLOAD_OFFLINE   = "offline";
@@ -156,6 +159,9 @@ static int shownInsideTemp   = INT_MIN;
 static int shownInsideHumid  = INT_MIN;
 static int shownOutsideTemp  = INT_MIN;
 static int shownOutsideHumid = INT_MIN;
+
+static BinType binType      = BIN_UNKNOWN;  // latest from Home Assistant
+static BinType shownBinType = BIN_UNKNOWN;  // what the circle currently shows
 
 static int  outsideTemp       = 0;
 static int  outsideHumid      = 0;
@@ -271,6 +277,12 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length) {
     } else if (strcmp(topic, TEMPERATURE_TOPIC) == 0) {
         if (parseInt(value, outsideTemp)) outsideTempValid = true;
         else Serial.printf("Ignoring non-numeric temperature: %s\n", value);
+    } else if (strcmp(topic, BIN_DAY_TOPIC) == 0) {
+        BinType t = binTypeFromPayload(value);
+        // Hold the last good value rather than clearing the circle, so an
+        // "unavailable" while the template reloads does not blank the display.
+        if (t != BIN_UNKNOWN) binType = t;
+        else Serial.printf("Ignoring unrecognised bin day: %s\n", value);
     }
 }
 
@@ -315,6 +327,7 @@ static bool mqttConnect() {
     pubSubClient.subscribe(STATE_TOPIC);
     pubSubClient.subscribe(HUMIDITY_TOPIC);
     pubSubClient.subscribe(TEMPERATURE_TOPIC);
+    pubSubClient.subscribe(BIN_DAY_TOPIC);
     return true;
 }
 
@@ -435,7 +448,7 @@ static void handleTouch() {
 // ---------------------------------------------------------------------------
 // Display
 // ---------------------------------------------------------------------------
-static void drawDayAndBins() {
+static void drawDay() {
     tft.setFreeFont(FF24);
     tft.setTextSize(2);
     tft.fillRect(DIGITAL_X, DIGITAL_Y + 100, 280, 100, TFT_BLACK);
@@ -446,8 +459,14 @@ static void drawDayAndBins() {
     if (strftime(dayName, sizeof(dayName), "%a", &timeinfo) > 0) {
         tft.print(dayName);
     }
+}
 
-    const BinType binType = nextBinType(daysSinceBinEpoch(timeinfo));
+// Driven by sensor.bin_day over MQTT rather than by the date, so the schedule
+// lives in one place. Nothing is drawn until the first value arrives, which is
+// immediate in practice because Home Assistant retains it.
+static void drawBinCircle() {
+    if (binType == shownBinType || binType == BIN_UNKNOWN) return;
+    shownBinType = binType;
 
     tft.setFreeFont(FF19);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -494,7 +513,7 @@ static void printClock() {
 
     if (lastDrawnDay != timeinfo.tm_mday) {
         lastDrawnDay = timeinfo.tm_mday;
-        drawDayAndBins();
+        drawDay();
     }
 
     tft.setTextSize(1);
@@ -636,5 +655,6 @@ void loop() {
     printClock();
     updateSensors();
     updateOutsideDisplay();
+    drawBinCircle();
     publishSensors();
 }
