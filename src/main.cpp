@@ -29,6 +29,10 @@
 // WiFi fault. Fail at compile time instead. sizeof("") is 1, so a literal of
 // size 1 is an empty string.
 // ---------------------------------------------------------------------------
+#if !defined(FIRMWARE_VERSION)
+#error "FIRMWARE_VERSION not defined - see scripts/version.sh"
+#endif
+
 #if !defined(WIFI_SSID) || !defined(WIFI_PWD) || !defined(TIMEZONE) || \
     !defined(MQTT_BROKER) || !defined(MQTT_PORT) || \
     !defined(MQTT_USER) || !defined(MQTT_PWD)
@@ -79,8 +83,7 @@ static constexpr int16_t READOUT_H = 80;
 // mqtt_statestream publishes as <base>/<domain>/<object_id>/<attribute>, so the
 // entity ids below are the only parts that change when something is renamed in
 // Home Assistant. List the candidates with their names using:
-//   mosquitto_sub -h <broker> -u <user> -P <pwd> -v \
-//                 -t 'homeassistant/switch/+/friendly_name'
+//   mosquitto_sub -h <broker> -u <user> -P <pwd> -v -t 'homeassistant/switch/+/friendly_name'
 #define HA_BASE_TOPIC     "homeassistant"
 #define FAIRY_SWITCH_ID   "dining_room_light_switch_switch_3"
 #define WEATHER_ENTITY_ID "forecast_home"
@@ -580,7 +583,7 @@ static void setupOTA() {
 // ---------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    Serial.println("\nStarting");
+    Serial.printf("\nStarting, firmware %s\n", FIRMWARE_VERSION);
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
