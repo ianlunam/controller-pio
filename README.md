@@ -11,11 +11,14 @@
 
 ## In My Project
 
-* Library: TFT_eSPI
+* Library: TFT_eSPI, and TFT_eWidget for the button
 * TFT_eSPI User Setup: See [platformio.ini](./platformio.ini)
 * Adafruit_AHTX0
 * WiFi.h
 * PubSubClient
+* ArduinoJson, for the sensor payload
+* ArduinoOTA, for flashing over the air
+* LittleFS, for the stored touch calibration
 
 ## Make Targets
 
@@ -86,7 +89,12 @@ in `src/main.cpp` touches hardware and is not covered.
 
 ## MPI3501 Pins
 
-These took some working out. The above two reference documents each had some parts but neither was clear about what pin 22 was for. Plus a bit of trial and error, I managed to get it working.
+These took some working out. The above two reference documents each had some
+parts but neither was clear about what pin 22 was for. Trial and error got it
+working, and the answer is recorded below: **pin 22 is the display reset
+(LCD_RST), and pin 18 is the register select / data-command line (LCD_RS)**.
+The `TFT_RST` and `TFT_DC` values in [platformio.ini](./platformio.ini) are the
+authority here, since that is the configuration the firmware actually runs on.
 
 ![RPi 3.5 inch Display](images/mpi3501.jpg)
 
@@ -100,10 +108,10 @@ These took some working out. The above two reference documents each had some par
 | P1 | 12 | 11 | P0 |
 | GND | 14 | 13 | P2 |
 | P4 | 16 | 15 | P3 |
-| LCD Reset LCD_RST | 18 | 17 | Power Input 3.3v |
-| GND | 20 | 19 | Touch Panel Input MOSI |
-| Touch Panel Reset TP_RST | 22 | 21 | Touch Panel Output MISO |
-| LCD Chip Select LCD_CS | 24 | 23 | Touch Panel Clock SCLK |
+| LCD Register Select LCD_RS | 18 | 17 | Power Input 3.3v |
+| GND | 20 | 19 | SPI MOSI, shared |
+| LCD Reset LCD_RST | 22 | 21 | SPI MISO, shared |
+| LCD Chip Select LCD_CS | 24 | 23 | SPI SCLK, shared |
 | Touch Panel Chip Select TP_CS | 26 | 25 | GND |
 
 ## AHT25 Pins
@@ -112,40 +120,70 @@ These took some working out. The above two reference documents each had some par
 
 ## ESP32 Connections
 
-| ESP32 Pin | Display Pin | AHT25 Pin |
-| --------- | ----------- | --------- |
-| D23 | #19 Touch Panel Input MOSI | |
-| D5 | #26 Touch Panel Touch Panel Chip Select TP_CS | |
-| D19 | #21 Touch Panel Output MISO | |
-| D18 | #23 Touch Panel Clock SCLK | |
-| D4 | #22 Touch Panel Reset TP_RST | |
-| D2 | #18 LCD Reset LCD_RST | |
-| D15 | #24 LCD Chip Select LCD_CS | |
+The right-hand column is the matching setting in
+[platformio.ini](./platformio.ini). Keep the two in step: an earlier version of
+this table had LCD_RS and LCD_RST swapped, which the build flags disagreed with
+for a long time without anyone noticing.
+
+### Display (MPI3501)
+
+| ESP32 Pin | Display Pin | platformio.ini |
+| --------- | ----------- | -------------- |
+| D23 | #19 SPI MOSI, shared with the touch panel | `TFT_MOSI=23` |
+| D19 | #21 SPI MISO, shared with the touch panel | `TFT_MISO=19` |
+| D18 | #23 SPI SCLK, shared with the touch panel | `TFT_SCLK=18` |
+| D15 | #24 LCD Chip Select LCD_CS | `TFT_CS=15` |
+| D2 | #18 LCD Register Select LCD_RS | `TFT_DC=2` |
+| D4 | #22 LCD Reset LCD_RST | `TFT_RST=4` |
+| D5 | #26 Touch Panel Chip Select TP_CS | `TOUCH_CS=5` |
 | VIN | #2 Display 5v | |
 | GND | #6 Display GND | |
-| 3.3v | | #1 VCC |
-| D21 | | #2 SDA |
-| GND | | #3 GND |
-| D22 | | #4 SDL |
+
+MOSI, MISO and SCLK are one bus driving both the ILI9486 and the XPT2046, which
+is why the display and the touch panel each need their own chip select, and why
+anything that draws to the screen has to stay on the same thread as the touch
+polling.
+
+### AHT25
+
+| ESP32 Pin | AHT25 Pin |
+| --------- | --------- |
+| 3.3v | #1 VCC |
+| D21 | #2 SDA |
+| GND | #3 GND |
+| D22 | #4 SCL |
 
 ## Code
 
-My code displays a simple button on the screen which, when clicked, sends a message to an MQTT broker which is attached to Home Assistant via the MQTT integration. I have an Automation set up on my Sonoff (eWeLink) switch to toggle the switch on receiving this message. Also set up in Home Automation is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
+My code displays a simple button on the screen which, when clicked, sends a message to an MQTT broker which is attached to Home Assistant via the MQTT integration. I have an Automation set up on my Sonoff (eWeLink) switch to toggle the switch on receiving this message. Also set up in Home Assistant is the StateStream integration which publishes the change of state of the switch, which my code listens to and changes the colour of the button appropriately.
 
 My code contains examples of how to:
 
-* Store credentials in Preferences
+* Keep credentials out of the source tree, as build flags from `../.secrets`
 * Connect to WiFi
 * Run a touch screen
-* Set hostname via mDNS (not much use as there's nothing listening in my code)
+* Set hostname via mDNS, which is what makes `make ota` able to find the board
 * Connect to an MQTT broker
 * Both publish and subscribe to the MQTT broker
 * Calibrate a touchscreen and store the data in LittleFS
 
 Entirely based on the examples from TFT_eSPI, PubSubClient and some others I don't remember.
 
-* [My code](./src/TouchScreen.cpp)
+* [My code](./src/main.cpp)
 * State Stream setup in Home Assistant's `configuration.yaml`
+
+> **TODO** This block does not match what the firmware subscribes to, on two
+> counts, and needs checking against the live `configuration.yaml`:
+>
+> 1. It publishes `switch.sonoff_1001ffea20_1`, which gives the topic
+>    `homeassistant/switch/sonoff_1001ffea20_1/state`. The firmware listens on
+>    `homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state` — note the
+>    `fairy_lights_` prefix. The entity was most likely renamed and this was
+>    never updated; whichever is stale, the two have to agree.
+> 2. It includes the `switch` domain only, so it cannot be what publishes
+>    `homeassistant/weather/forecast_home/temperature` and `/humidity`, which
+>    the firmware also subscribes to. Either the `weather` domain is missing
+>    here, or something else supplies those topics.
 
 ```yaml
 mqtt_statestream:
@@ -160,6 +198,21 @@ mqtt_statestream:
 ```
 
 * Sensor Setup
+
+> **TODO** The `state_topic` below is the old decimal MAC format and no longer
+> matches what the firmware publishes, which is now zero-padded hex:
+> `home/screen/XXXXXXXX/state`. The current value is printed over serial at
+> boot — read it from there rather than trying to convert the old one, because
+> `481635231` is genuinely ambiguous and has three valid readings
+> (`301023E7`, `30A305E7`, `30A3341F`). That ambiguity is why the format
+> changed.
+>
+> While updating these, consider adding
+> `availability_topic: "home/screen/XXXXXXXX/availability"` to both sensors.
+> The firmware now publishes a retained `online` on connect and registers
+> `offline` as its last will, so Home Assistant can show the screen as
+> unavailable when it drops off instead of holding the last reading forever.
+
 ```yaml
 mqtt:
   - sensor:
