@@ -109,7 +109,13 @@ static constexpr uint32_t SENSOR_PUBLISH_MS    = 10000;
 static constexpr uint32_t WIFI_RETRY_MS        = 10000;
 static constexpr uint32_t MQTT_RETRY_MS        = 5000;
 // PubSubClient defaults to 15s waiting for a CONNACK, which is 15s of frozen
-// display per retry when the broker is reachable but not answering.
+// display per retry when the broker accepts the connection but never answers.
+//
+// Measured against a listener that accepts TCP and stays silent: each attempt
+// blocks 2.02 to 2.42s (mean 2.24s), retries land 5.00s apart, and the loop is
+// therefore blocked about 45% of the time while the broker is sick. The clock
+// stutters but keeps running. At the 15s default the block exceeds the retry
+// interval, so the display simply stops until the broker returns.
 static constexpr uint16_t MQTT_SOCKET_TIMEOUT_SEC = 2;
 // Re-resolve the broker after this many consecutive failures, in case it moved.
 static constexpr uint8_t MQTT_FAILURES_BEFORE_RERESOLVE = 3;

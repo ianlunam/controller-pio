@@ -99,6 +99,36 @@ That covers every payload the sensors can produce, including the "unknown" and
 
 `pio run` builds the firmware only; the native environment is opt-in.
 
+### Testing against a broken broker
+
+The MQTT failure path is worth exercising deliberately, because the bad case is
+a broker that accepts the connection and then says nothing — not one that is
+simply down. Point the firmware at a listener that does exactly that, without
+touching `../.secrets`:
+
+```sh
+python3 -c "
+import socket
+srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind(('0.0.0.0', 1883)); srv.listen(16)
+held = []
+while True: held.append(srv.accept()[0])
+" &
+
+sed 's/^MQTT_BROKER .*/MQTT_BROKER <this machine>/' ../.secrets > /tmp/dead.secrets
+make upload SECRETS=/tmp/dead.secrets
+```
+
+Expect `MQTT connect failed, state -4` roughly every five seconds, each attempt
+taking a little over two seconds. Then `make upload` to put the real
+configuration back.
+
+Restarting Home Assistant does **not** test this: the broker usually runs as a
+separate add-on, so the device's session survives untouched. Restarting the
+Mosquitto add-on does, and connecting a second client with the same client id
+(`esp32-<mac>`) forces an immediate eviction, which is the quickest way to check
+that it reconnects and resubscribes.
+
 ## Bin Day
 
 The coloured circle shows which bin goes out next: red for landfill, yellow for
