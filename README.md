@@ -172,20 +172,35 @@ Entirely based on the examples from TFT_eSPI, PubSubClient and some others I don
 * [My code](./src/main.cpp)
 * State Stream setup in Home Assistant's `configuration.yaml`
 
-Confirmed against live broker traffic: the switch state does arrive on
-`homeassistant/switch/fairy_lights_sonoff_1001ffea20_1/state`, and the two
-weather values arrive on `homeassistant/weather/forecast_home/humidity` and
-`/temperature`. Two notes on the block below:
+The button tracks a Home Assistant entity, so it breaks when that entity is
+renamed or replaced. The subscribed topics are built from entity ids near the
+top of [src/main.cpp](./src/main.cpp) — `FAIRY_SWITCH_ID` and
+`WEATHER_ENTITY_ID` — and those ids are the only part that changes.
 
-1. The `entities:` entry names `switch.sonoff_1001ffea20_1`, without the
-   `fairy_lights_` prefix the firmware subscribes to. It looks stale, and it is
-   redundant either way, because `domains: - switch` already publishes every
-   switch. Kept here so the discrepancy is on the record.
-2. `- weather` is required for the two weather topics to exist, together with
-   `publish_attributes: true`, since humidity and temperature are attributes of
-   the weather entity rather than its state. It was missing from this block and
-   has been added by inference from the topics actually arriving — worth
-   checking against the live `configuration.yaml`, which is the authority.
+To find the current one, list every switch beside its friendly name:
+
+```sh
+mosquitto_sub -h <broker> -u <user> -P <pwd> -v \
+              -t 'homeassistant/switch/+/friendly_name'
+```
+
+Two dead entities still linger in the broker as retained messages, both named
+`"Fairy Lights "` with a trailing space and both stuck at `unavailable`:
+`switch.fairy_lights_sonoff_1001ffea20_1` and
+`light.living_room_fairy_lights`. The live one is
+`switch.dining_room_light_switch_switch_3`, named `"Fairy Lights"`. Pick the
+one that actually reports a state.
+
+Note that the toggle is a separate path: the button publishes to
+`fairylights/toggle`, and the Home Assistant automation listening there has to
+target the new entity too. Changing the entity id in the firmware only fixes
+which state the screen *reads*.
+
+`- weather` is required in `domains` below, along with
+`publish_attributes: true`, for the two weather topics to exist at all, since
+humidity and temperature are attributes of the weather entity rather than its
+state. It was added here by inference from the topics arriving on the broker,
+so check it against the live `configuration.yaml`, which is the authority.
 
 ```yaml
 mqtt_statestream:
@@ -197,10 +212,16 @@ mqtt_statestream:
         - switch
         - weather
     entities:
-        - switch.sonoff_1001ffea20_1
+        - switch.dining_room_light_switch_switch_3
 ```
 
 * Sensor Setup
+
+If Home Assistant shows a temperature and humidity that never change, check
+the topic first. MQTT retains the last value, so after the topic changed, Home
+Assistant carried on displaying the reading the old firmware had left behind on
+`home/screen/481635231/state` and looked healthy while being six hours stale.
+Clear a dead topic with `mosquitto_pub -t <topic> -r -n`.
 
 The topics below are the real ones for this board, read off the serial log at
 boot. They are derived from the MAC, so a different board gives different
