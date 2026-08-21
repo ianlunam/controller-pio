@@ -17,6 +17,33 @@
 * WiFi.h
 * PubSubClient
 
+## Make Targets
+
+`make help` lists them. The common ones:
+
+| Target | Does |
+| ------ | ---- |
+| `make` | compile the firmware |
+| `make upload` | flash over USB |
+| `make ota` | flash over the air to `mpi3501.local` |
+| `make upload-monitor` | flash over USB, then open the serial monitor |
+| `make monitor` | open the serial monitor |
+| `make test` | run the host unit tests |
+| `make check` | static analysis |
+| `make check-secrets` | report which keys `../.secrets` is missing |
+| `make clean` | remove build output |
+
+`make`, `make upload` and `make ota` all run `check-secrets` first, so a missing
+key is reported by name before the compiler gets involved. It prints key names
+only, never values.
+
+Everything is a thin wrapper over `pio`; override `PIO`, `FIRMWARE_ENV`,
+`OTA_ENV` or `SECRETS` if you need to.
+
+The OTA environment has its own build directory, so the first `make ota` after
+a `make` recompiles from scratch. It also needs firmware already on the board
+that calls `ArduinoOTA.handle()`, so use `make upload` over USB at least once.
+
 ## Build Configuration
 
 Secrets live in `../.secrets` (outside the repo), one `KEY value` pair per
@@ -48,7 +75,7 @@ The pure logic — the bin schedule and the MQTT payload parsing — lives in
 compiles for the host:
 
 ```sh
-pio test -e native
+make test
 ```
 
 That runs the whole fortnightly cycle and the payload edge cases in about a
